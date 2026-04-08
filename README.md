@@ -27,7 +27,7 @@ L'interface permet aux opérateurs (en bord de piste ou à distance) de visualis
 * **MapLibre GL JS** : Moteur de rendu cartographique.
 
 ### IA & Backend Embarqué
-* **ROS / ROS2** : Middleware pour la communication inter-processus et la gestion des nœuds capteurs/actionneurs.
+* **RTMAPS** : 
 * **Python** : Langage principal pour le backend et l'IA.
 * **PyTorch / TensorFlow / OpenCV** : *[À adapter selon les frameworks IA que vous utilisez]* pour la vision par ordinateur et les réseaux de neurones.
 
