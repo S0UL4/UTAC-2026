@@ -1,14 +1,9 @@
-import { ExtensionContext } from "@foxglove/studio";
-import ReactDOM from "react-dom/client";
-import React from "react";
-import { PcMapPanel } from "./Panel_Map";
+import { ExtensionContext } from "@foxglove/extension";
+import { initVehiclePanel } from "./VehiclePanel";
 
 export function activate(extensionContext: ExtensionContext) {
   extensionContext.registerPanel({
-    name: "Localisation PC",
-    initPanel: (context) => {
-      const root = ReactDOM.createRoot(context.panelElement);
-      root.render(React.createElement(PcMapPanel, { context }));
-    },
+    name: "Vehicle Supervision Panel",
+    initPanel: initVehiclePanel,
   });
 }
