@@ -29,7 +29,7 @@ L'interface permet aux opérateurs (en bord de piste ou à distance) de visualis
 ### IA & Backend Embarqué
 * **ROS / ROS2** : Middleware pour la communication inter-processus et la gestion des nœuds capteurs/actionneurs.
 * **Python** : Langage principal pour le backend et l'IA.
-* **PyTorch / TensorFlow / OpenCV** : *[À adapter selon les frameworks IA que vous utilisez]* pour la vision par ordinateur et les réseaux de neurones.
+* **OpenCV** : pour la vision par ordinateur.
 
 ## 🚀 Installation & Lancement
 
