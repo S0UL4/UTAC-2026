@@ -1,7 +1,7 @@
 import { ExtensionContext } from "@foxglove/studio";
 import ReactDOM from "react-dom/client";
 import React from "react";
-import { PcMapPanel } from "./Panel_Map";
+import { PcMapPanel } from "./Panel_map";
 
 export function activate(extensionContext: ExtensionContext) {
   extensionContext.registerPanel({
