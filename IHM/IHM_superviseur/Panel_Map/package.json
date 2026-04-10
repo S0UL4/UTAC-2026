@@ -1,6 +1,6 @@
 {
-  "name": "pc-map-tracker",
-  "displayName": "pc-map-tracker",
+  "name": "vehicle-supervision-panel",
+  "displayName": "vehicle-supervision-panel",
   "description": "",
   "publisher": "unknown",
   "homepage": "",
@@ -21,7 +21,6 @@
   "devDependencies": {
     "@foxglove/eslint-plugin": "2.1.2",
     "@foxglove/extension": "2.49.0",
-    "@foxglove/studio": "^2.4.0",
     "@types/react": "18.3.28",
     "@types/react-dom": "18.3.7",
     "create-foxglove-extension": "1.3.1",
@@ -32,9 +31,5 @@
     "react-dom": "18.3.1",
     "style-loader": "^4.0.0",
     "typescript": "5.9.3"
-  },
-  "dependencies": {
-    "maplibre-gl": "^5.22.0",
-    "react-map-gl": "^8.1.0"
   }
 }

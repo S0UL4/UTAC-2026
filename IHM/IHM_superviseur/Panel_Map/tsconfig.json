@@ -5,7 +5,7 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    "lib": ["dom", "ES2017"],
+    "lib": ["dom"],
 
     // These two settings prevent typescript from emitting .d.ts files we don't need in
     // the compiled extension.
@@ -16,11 +16,11 @@
     // Enable/disable these checks as necessary to suit your coding preferences or work with
     // existing code
     "noFallthroughCasesInSwitch": true,
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "noImplicitReturns": true,
-    "noUncheckedIndexedAccess": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "forceConsistentCasingInFileNames": true
   }
 }
