@@ -1,15 +1,29 @@
 {
+  "include": ["./src/**/*"],
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "lib": ["ES2020", "DOM"],
+    "module": "esnext",
+    "target": "es2020",
+    "lib": ["dom"],
+    "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "strict": true,
-    "outDir": "dist",
-    "rootDir": "src",
+    "newLine": "lf",
+    "sourceMap": true,
+    "inlineSources": true,
+    "allowJs": true,
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
-  },
-  "include": ["src"]
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "composite": false,
+    "declaration": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true
+  }
 }

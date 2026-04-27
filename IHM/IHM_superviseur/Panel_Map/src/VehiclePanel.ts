@@ -333,7 +333,7 @@ export function initVehiclePanel(context: PanelExtensionContext): () => void {
     if (currentVehicleId) {
       const frame = renderState.currentFrame as readonly MessageEvent<unknown>[] | undefined;
       const gpsTopic = `/vehicle/${currentVehicleId}/gps`;
-      const last = frame?.findLast((m: any) => m.topic === gpsTopic);
+      const last = frame && [...frame].reverse().find((m: any) => m.topic === gpsTopic);
 
       if (last) {
         const msg = last.message as GpsMessage;

@@ -1,5 +1,5 @@
 import { PanelExtensionContext } from "@foxglove/extension";
-import { useState, useLayoutEffect, useRef } from "react";
+import { useState, useLayoutEffect, useRef, CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ type CommandMessage = {
 type VehicleMode = "RUNNING" | "PAUSED" | "STOPPED" | "RETURNING";
 
 // ── Styles partagés ────────────────────────────────────────────────────────
-const BASE_BTN: React.CSSProperties = {
+const BASE_BTN: CSSProperties = {
   width: "100%", padding: "14px", border: "none", borderRadius: "10px",
   fontSize: "15px", fontWeight: "bold", cursor: "pointer",
   transition: "all 0.2s ease", letterSpacing: "1px",

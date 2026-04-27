@@ -1,5 +1,5 @@
-import { PanelExtensionContext, RenderState, MessageEvent } from "@foxglove/extension";
-import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
+import { PanelExtensionContext, MessageEvent } from "@foxglove/extension";
+import { useLayoutEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
 type StatusData = { state: string };

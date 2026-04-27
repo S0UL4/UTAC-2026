@@ -1,4 +1,4 @@
-import { PanelExtensionContext, RenderState } from "@foxglove/studio";
+import { PanelExtensionContext } from "@foxglove/studio";
 import { useEffect, useLayoutEffect, useState } from "react";
 
 const ALL_VEHICLES = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"];
