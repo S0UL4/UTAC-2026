@@ -1,12 +1,8 @@
 import { PanelExtensionContext, RenderState, MessageEvent } from "@foxglove/extension";
-import React, { useEffect, useLayoutEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
-// 1. Définition des types attendus du script Python
-type StatusData = {
-  state: string;
-};
-
+type StatusData = { state: string };
 type VehicleState = "MOVING" | "FREE" | "OCCUPIED" | "UNKNOWN" | "ATTENTE";
 
 const STATE_META: Record<VehicleState, { label: string; color: string; icon: string }> = {
@@ -19,95 +15,98 @@ const STATE_META: Record<VehicleState, { label: string; color: string; icon: str
 
 function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
   const [vehicleState, setVehicleState] = useState<VehicleState>("ATTENTE");
-  const [msgCount, setMsgCount] = useState(0);
+  const [msgCount, setMsgCount]         = useState(0);
+  const [vehicleId, setVehicleId]       = useState<string | undefined>(undefined);
+  
+  // On garde en ref le vehicleId courant pour éviter les re-subscriptions inutiles
+  const currentVehicleIdRef = useRef<string | undefined>(undefined);
 
   useLayoutEffect(() => {
-    // Utilisation de : any pour outrepasser l'erreur de compatibilité 'readonly' de TypeScript
     context.onRender = (renderState: any, done: () => void) => {
-      
-      // On récupère le frame de messages en spécifiant qu'il est en lecture seule (readonly)
+
+      // ── 1. Lecture du véhicule actif depuis le panel Flotte ──
+      const shared = renderState.sharedPanelState as { vehicleId?: string } | undefined;
+      const newVehicleId = shared?.vehicleId;
+
+      if (newVehicleId !== currentVehicleIdRef.current) {
+        currentVehicleIdRef.current = newVehicleId;
+        setVehicleId(newVehicleId);
+
+        // Reset de l'état quand on change de véhicule
+        setVehicleState("ATTENTE");
+        setMsgCount(0);
+
+        // Re-souscription au bon topic
+        if (newVehicleId) {
+          context.subscribe([{ topic: `/vehicle/${newVehicleId}/status_processed` }]);
+        } else {
+          context.subscribe([]); // aucun véhicule sélectionné
+        }
+      }
+
+      // ── 2. Lecture des messages du topic ──
       const frame = renderState.currentFrame as readonly MessageEvent<unknown>[] | undefined;
-      
       if (frame && frame.length > 0) {
-        // On récupère le dernier événement reçu
         const lastEvent = frame[frame.length - 1];
-        
         if (lastEvent) {
-          // On extrait la donnée métier (le JSON envoyé par Python)
           const data = lastEvent.message as StatusData;
-          
-          if (data && data.state) {
+          if (data?.state) {
             setVehicleState(data.state as VehicleState);
             setMsgCount((c) => c + 1);
           }
         }
       }
+
       done();
     };
-    context.watch("currentFrame");
-  }, [context]);
 
-  useEffect(() => {
-    // S'abonne au topic diffusé par le script vision_processor.py
-    context.subscribe([{ topic: "/vehicle/status_processed" }]);
+    context.watch("currentFrame");
+    context.watch("sharedPanelState"); // 👈 indispensable pour réagir au panel Flotte
+
   }, [context]);
 
   const meta = STATE_META[vehicleState] ?? STATE_META.ATTENTE;
 
   return (
     <div style={{
-      background: "#0d0f14",
-      height: "100%",
-      color: "white",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      fontFamily: "sans-serif",
-      gap: "15px"
+      background: "#0d0f14", height: "100%", color: "white",
+      display: "flex", flexDirection: "column", alignItems: "center",
+      justifyContent: "center", fontFamily: "sans-serif", gap: "15px"
     }}>
+      {/* Badge véhicule actif */}
+      {vehicleId && (
+        <div style={{ fontSize: "12px", color: "#6b7280", letterSpacing: "1px" }}>
+          🚗 Véhicule : <span style={{ color: "#fff" }}>{vehicleId}</span>
+        </div>
+      )}
+
+      {/* État principal */}
       <div style={{
-        fontSize: "40px",
-        color: meta.color,
-        border: `3px solid ${meta.color}`,
-        borderRadius: "15px",
-        padding: "20px 40px",
-        textAlign: "center",
-        backgroundColor: `${meta.color}10`, // Fond transparent coloré
-        transition: "all 0.3s ease"
+        fontSize: "40px", color: meta.color,
+        border: `3px solid ${meta.color}`, borderRadius: "15px",
+        padding: "20px 40px", textAlign: "center",
+        backgroundColor: `${meta.color}10`, transition: "all 0.3s ease"
       }}>
         <div style={{ fontSize: "60px" }}>{meta.icon}</div>
-        <div style={{ 
-          fontWeight: "bold", 
-          marginTop: "10px",
-          letterSpacing: "1px" 
-        }}>
-          {meta.label}
+        <div style={{ fontWeight: "bold", marginTop: "10px", letterSpacing: "1px" }}>
+          {vehicleId ? meta.label : "Sélectionnez un véhicule"}
         </div>
       </div>
-      
-      <div style={{ 
-        opacity: 0.4, 
-        fontSize: "11px",
-        textAlign: "center" 
-      }}>
-        Source : ws://localhost:8766<br/>
+
+      <div style={{ opacity: 0.4, fontSize: "11px", textAlign: "center" }}>
+        Topic : {vehicleId ? `/vehicle/${vehicleId}/status_processed` : "—"}<br />
         Messages reçus : {msgCount}
       </div>
     </div>
   );
 }
 
-// Initialisation du panneau pour Foxglove
 export function initVehicleStatusPanel(context: PanelExtensionContext): () => void {
   const container = document.createElement("div");
   container.style.width = "100%";
   container.style.height = "100%";
   context.panelElement.appendChild(container);
-
   const root = createRoot(container);
   root.render(<VehicleStatusPanel context={context} />);
-  
-  // Nettoyage lors du démontage du panneau
   return () => root.unmount();
 }

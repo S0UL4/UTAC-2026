@@ -1,15 +1,14 @@
-import { PanelExtensionContext } from "@foxglove/extension";
+import { PanelExtensionContext, MessageEvent } from "@foxglove/extension";
 import maplibregl from "maplibre-gl";
 import type { Feature, LineString, Point } from "geojson";
 import "maplibre-gl/dist/maplibre-gl.css";
 
-type Vehicle = {
-  id: string;
-  lngLat: [number, number];
-  statut: string;
-  batterie: string;
-  destination: string;
-  vitesse: string;
+// ── Types ──────────────────────────────────────────────────────────────────
+type GpsMessage = {
+  latitude:  number;
+  longitude: number;
+  speed?:    number;
+  heading?:  number;
 };
 
 type NominatimResult = {
@@ -21,123 +20,109 @@ type NominatimResult = {
 type OsrmRouteResponse = {
   code: string;
   routes?: Array<{
-    geometry: {
-      coordinates: [number, number][];
-      type: string;
-    };
+    geometry: { coordinates: [number, number][]; type: string };
     distance: number;
     duration: number;
   }>;
 };
 
+// ── Point de départ par défaut (avant premier fix GPS) ────────────────────
+const DEFAULT_LNGLAT: [number, number] = [1.0742, 49.3852];
+
 export function initVehiclePanel(context: PanelExtensionContext): () => void {
+  // ── DOM setup (inchangé) ─────────────────────────────────────────────────
   const root = context.panelElement;
   root.innerHTML = "";
-  root.style.margin = "0";
-  root.style.padding = "0";
-  root.style.width = "100%";
-  root.style.height = "100%";
-  root.style.overflow = "hidden";
-  root.style.fontFamily = "Arial, sans-serif";
-
-  const vehicle: Vehicle = {
-    id: "V01",
-    lngLat: [1.0742, 49.3852],
-    statut: "Libre",
-    batterie: "82%",
-    destination: "Campus principal",
-    vitesse: "0 km/h",
-  };
+  Object.assign(root.style, {
+    margin: "0", padding: "0", width: "100%",
+    height: "100%", overflow: "hidden", fontFamily: "Arial, sans-serif",
+  });
 
   const container = document.createElement("div");
-  container.style.display = "flex";
-  container.style.width = "100%";
-  container.style.height = "100%";
+  Object.assign(container.style, { display: "flex", width: "100%", height: "100%" });
 
   const mapContainer = document.createElement("div");
-  mapContainer.style.flex = "1";
-  mapContainer.style.height = "100%";
-  mapContainer.style.minHeight = "300px";
+  Object.assign(mapContainer.style, { flex: "1", height: "100%", minHeight: "300px" });
 
   const sidebar = document.createElement("div");
-  sidebar.style.width = "320px";
-  sidebar.style.background = "#f9fafb";
-  sidebar.style.borderLeft = "1px solid #d1d5db";
-  sidebar.style.padding = "16px";
-  sidebar.style.boxSizing = "border-box";
-  sidebar.style.overflowY = "auto";
-  sidebar.style.color = "#111827";
+  Object.assign(sidebar.style, {
+    width: "320px", background: "#f9fafb", borderLeft: "1px solid #d1d5db",
+    padding: "16px", boxSizing: "border-box", overflowY: "auto", color: "#111827",
+  });
+
+  // ── Sidebar header ────────────────────────────────────────────────────────
+  const vehicleBadge = document.createElement("div");
+  Object.assign(vehicleBadge.style, {
+    fontSize: "11px", letterSpacing: "3px", color: "#2563eb",
+    marginBottom: "12px", fontWeight: "bold",
+  });
+  vehicleBadge.textContent = "EN ATTENTE…";
 
   const title = document.createElement("h2");
-  title.textContent = "Recherche d’adresse";
-  title.style.marginTop = "0";
-  title.style.marginBottom = "12px";
-  title.style.fontSize = "20px";
-  title.style.color = "#111827";
+  title.textContent = "Recherche d'adresse";
+  Object.assign(title.style, { marginTop: "0", marginBottom: "12px", fontSize: "20px" });
 
   const description = document.createElement("p");
-  description.textContent = "Entrez une destination pour calculer l’itinéraire depuis V01.";
-  description.style.marginTop = "0";
-  description.style.marginBottom = "12px";
-  description.style.color = "#374151";
-  description.style.fontSize = "14px";
-  description.style.lineHeight = "1.5";
+  description.textContent = "Entrez une destination pour calculer l'itinéraire.";
+  Object.assign(description.style, {
+    marginTop: "0", marginBottom: "12px", color: "#374151", fontSize: "14px", lineHeight: "1.5",
+  });
+
+  const gpsStatus = document.createElement("div");
+  Object.assign(gpsStatus.style, {
+    fontSize: "11px", color: "#6b7280", marginBottom: "12px",
+    padding: "6px 8px", background: "#f3f4f6", borderRadius: "6px",
+  });
+  gpsStatus.textContent = "📡 GPS : en attente…";
 
   const input = document.createElement("input");
   input.type = "text";
   input.placeholder = "Ex. Rouen gare";
-  input.style.width = "100%";
-  input.style.padding = "10px 12px";
-  input.style.marginBottom = "12px";
-  input.style.boxSizing = "border-box";
-  input.style.border = "1px solid #d1d5db";
-  input.style.borderRadius = "8px";
-  input.style.fontSize = "14px";
-  input.style.outline = "none";
+  Object.assign(input.style, {
+    width: "100%", padding: "10px 12px", marginBottom: "12px", boxSizing: "border-box",
+    border: "1px solid #d1d5db", borderRadius: "8px", fontSize: "14px", outline: "none",
+  });
 
   const button = document.createElement("button");
-  button.textContent = "Calculer l’itinéraire";
-  button.style.width = "100%";
-  button.style.padding = "10px 12px";
-  button.style.border = "none";
-  button.style.borderRadius = "8px";
-  button.style.background = "#2563eb";
-  button.style.color = "white";
-  button.style.fontSize = "14px";
-  button.style.fontWeight = "bold";
-  button.style.cursor = "pointer";
-  button.style.marginBottom = "12px";
+  button.textContent = "Calculer l'itinéraire";
+  Object.assign(button.style, {
+    width: "100%", padding: "10px 12px", border: "none", borderRadius: "8px",
+    background: "#2563eb", color: "white", fontSize: "14px",
+    fontWeight: "bold", cursor: "pointer", marginBottom: "12px",
+  });
 
-const resetButton = document.createElement("button");
-resetButton.textContent = "Réinitialiser";
-resetButton.style.width = "100%";
-resetButton.style.padding = "10px 12px";
-resetButton.style.border = "1px solid #d1d5db";
-resetButton.style.borderRadius = "8px";
-resetButton.style.background = "#ffffff";
-resetButton.style.color = "#111827";
-resetButton.style.fontSize = "14px";
-resetButton.style.fontWeight = "bold";
-resetButton.style.cursor = "pointer";
-resetButton.style.marginBottom = "12px";
+  const resetButton = document.createElement("button");
+  resetButton.textContent = "Réinitialiser";
+  Object.assign(resetButton.style, {
+    width: "100%", padding: "10px 12px", border: "1px solid #d1d5db",
+    borderRadius: "8px", background: "#ffffff", color: "#111827",
+    fontSize: "14px", fontWeight: "bold", cursor: "pointer", marginBottom: "12px",
+  });
 
   const resultBox = document.createElement("div");
-  resultBox.style.fontSize = "14px";
-  resultBox.style.lineHeight = "1.5";
-  resultBox.style.color = "#111827";
+  Object.assign(resultBox.style, { fontSize: "14px", lineHeight: "1.5", color: "#111827" });
   resultBox.innerHTML = '<p style="color:#374151;">Aucune destination calculée.</p>';
 
-sidebar.appendChild(title);
-sidebar.appendChild(description);
-sidebar.appendChild(input);
-sidebar.appendChild(button);
-sidebar.appendChild(resetButton);
-sidebar.appendChild(resultBox);
+  sidebar.appendChild(vehicleBadge);
+  sidebar.appendChild(title);
+  sidebar.appendChild(description);
+  sidebar.appendChild(gpsStatus);
+  sidebar.appendChild(input);
+  sidebar.appendChild(button);
+  sidebar.appendChild(resetButton);
+  sidebar.appendChild(resultBox);
 
   container.appendChild(mapContainer);
   container.appendChild(sidebar);
   root.appendChild(container);
 
+  // ── État local ────────────────────────────────────────────────────────────
+  let currentVehicleId: string | undefined = undefined;
+  let vehicleLngLat: [number, number]      = DEFAULT_LNGLAT;
+  let vehicleMarker: maplibregl.Marker | undefined;
+  let destinationMarker: maplibregl.Marker | undefined;
+
+  // ── Carte MapLibre (inchangée) ────────────────────────────────────────────
   const map = new maplibregl.Map({
     container: mapContainer,
     style: {
@@ -154,329 +139,225 @@ sidebar.appendChild(resultBox);
           attribution: "© OpenStreetMap Contributors",
         },
       },
-      layers: [
-        {
-          id: "osm-layer",
-          type: "raster",
-          source: "osm",
-        },
-      ],
+      layers: [{ id: "osm-layer", type: "raster", source: "osm" }],
     },
-    center: vehicle.lngLat,
+    center: DEFAULT_LNGLAT,
     zoom: 16,
   });
 
   map.addControl(new maplibregl.NavigationControl(), "top-right");
 
-  let destinationMarker: maplibregl.Marker | undefined;
-
+  // ── Helpers carte ─────────────────────────────────────────────────────────
   function setResultMessage(message: string, isError = false): void {
-    resultBox.innerHTML = `<p style="margin:0; color:${isError ? "#b91c1c" : "#111827"};">${message}</p>`;
+    resultBox.innerHTML = `<p style="margin:0;color:${isError ? "#b91c1c" : "#111827"};">${message}</p>`;
   }
-
-  async function geocodeAddress(query: string): Promise<{ lngLat: [number, number]; label: string }> {
-  const url =
-  `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&q=${encodeURIComponent(query)}`;
-
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error("Échec du géocodage de l’adresse.");
-  }
-
-  const data = (await response.json()) as NominatimResult[];
-
-  if (!Array.isArray(data) || data.length === 0) {
-    throw new Error("Adresse introuvable.");
-  }
-
-  const first = data[0];
-  if (!first) {
-    throw new Error("Adresse introuvable.");
-  }
-
-  return {
-    lngLat: [Number(first.lon), Number(first.lat)],
-    label: first.display_name,
-  };
-}
-
-  async function fetchRoute(
-  start: [number, number],
-  end: [number, number],
-): Promise<{ coordinates: [number, number][]; distance: number; duration: number }> {
-  const coordinates = `${start[0]},${start[1]};${end[0]},${end[1]}`;
-  const url =
-    `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`;
-
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error("Échec du calcul d’itinéraire.");
-  }
-
-  const data = (await response.json()) as OsrmRouteResponse;
-
-  if (data.code !== "Ok" || !data.routes || data.routes.length === 0) {
-    throw new Error("Aucun itinéraire trouvé.");
-  }
-
-  const route = data.routes[0];
-  if (!route) {
-    throw new Error("Aucun itinéraire trouvé.");
-  }
-
-  return {
-    coordinates: route.geometry.coordinates,
-    distance: route.distance,
-    duration: route.duration,
-  };
-}
 
   function updateRouteLine(coordinates: [number, number][]): void {
     const source = map.getSource("route-line") as maplibregl.GeoJSONSource | undefined;
-
-    if (!source) {
-      return;
-    }
-
-    const routeData: Feature<LineString> = {
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates,
-      },
-      properties: {},
+    if (!source) return;
+    const data: Feature<LineString> = {
+      type: "Feature", geometry: { type: "LineString", coordinates }, properties: {},
     };
-
-    source.setData(routeData);
+    source.setData(data);
   }
 
   function updateDestinationPoint(lngLat: [number, number]): void {
     const source = map.getSource("destination-point") as maplibregl.GeoJSONSource | undefined;
-
-    if (!source) {
-      return;
-    }
-
-    const pointData: Feature<Point> = {
-      type: "Feature",
-      geometry: {
-        type: "Point",
-        coordinates: lngLat,
-      },
-      properties: {},
+    if (!source) return;
+    const data: Feature<Point> = {
+      type: "Feature", geometry: { type: "Point", coordinates: lngLat }, properties: {},
     };
-
-    source.setData(pointData);
+    source.setData(data);
   }
 
   function clearRoute(): void {
     updateRouteLine([]);
-    updateDestinationPoint(vehicle.lngLat);
-
-    if (destinationMarker) {
-      destinationMarker.remove();
-      destinationMarker = undefined;
-    }
+    updateDestinationPoint(vehicleLngLat);
+    destinationMarker?.remove();
+    destinationMarker = undefined;
   }
 
   function resetView(): void {
-  clearRoute();
+    clearRoute();
+    input.value = "";
+    resultBox.innerHTML = '<p style="color:#374151;">Aucune destination calculée.</p>';
+    map.flyTo({ center: vehicleLngLat, zoom: 16, duration: 800 });
+  }
 
-  input.value = "";
-  resultBox.innerHTML = '<p style="color:#374151;">Aucune destination calculée.</p>';
+  // ── Marqueur véhicule (point bleu) ────────────────────────────────────────
+  function createVehicleMarker(lngLat: [number, number]): maplibregl.Marker {
+    const el  = document.createElement("div");
+    const dot = document.createElement("div");
+    Object.assign(dot.style, {
+      width: "18px", height: "18px", borderRadius: "50%",
+      backgroundColor: "#2563eb", border: "2px solid white",
+      boxShadow: "0 0 4px rgba(0,0,0,0.3)", cursor: "pointer",
+      transform: "scale(1)", transition: "transform 0.15s ease",
+    });
+    dot.addEventListener("click", () => {
+      map.flyTo({ center: lngLat, zoom: 16, duration: 800 });
+    });
+    el.appendChild(dot);
+    return new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
+  }
 
-  map.flyTo({
-    center: vehicle.lngLat,
-    zoom: 16,
-    duration: 800,
-  });
-}
+  // ── Mise à jour de la position GPS du véhicule ────────────────────────────
+  function updateVehiclePosition(lngLat: [number, number]): void {
+    vehicleLngLat = lngLat;
 
+    // Déplace le marqueur existant ou le recrée
+    if (vehicleMarker) {
+      vehicleMarker.setLngLat(lngLat);
+    }
+
+    gpsStatus.textContent =
+      `📡 GPS : ${lngLat[1].toFixed(5)}, ${lngLat[0].toFixed(5)}`;
+    gpsStatus.style.color = "#059669";
+  }
+
+  // ── Chargement de la carte ────────────────────────────────────────────────
   map.on("load", () => {
-    const emptyRoute: Feature<LineString> = {
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: [],
-      },
-      properties: {},
-    };
-
-    const initialDestinationPoint: Feature<Point> = {
-      type: "Feature",
-      geometry: {
-        type: "Point",
-        coordinates: vehicle.lngLat,
-      },
-      properties: {},
-    };
-
+    // Sources et couches de tracé (inchangées)
     map.addSource("route-line", {
       type: "geojson",
-      data: emptyRoute,
+      data: { type: "Feature", geometry: { type: "LineString", coordinates: [] }, properties: {} },
     });
-
     map.addLayer({
-      id: "route-line-layer",
-      type: "line",
-      source: "route-line",
-      layout: {
-        "line-join": "round",
-        "line-cap": "round",
-      },
-      paint: {
-        "line-color": "#dc2626",
-        "line-width": 5,
-        "line-opacity": 0.85,
-      },
+      id: "route-line-layer", type: "line", source: "route-line",
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: { "line-color": "#dc2626", "line-width": 5, "line-opacity": 0.85 },
     });
-
     map.addSource("destination-point", {
       type: "geojson",
-      data: initialDestinationPoint,
+      data: { type: "Feature", geometry: { type: "Point", coordinates: DEFAULT_LNGLAT }, properties: {} },
     });
-
     map.addLayer({
-      id: "destination-point-layer",
-      type: "circle",
-      source: "destination-point",
-      paint: {
-        "circle-radius": 0,
-        "circle-color": "#000000",
-      },
+      id: "destination-point-layer", type: "circle", source: "destination-point",
+      paint: { "circle-radius": 0, "circle-color": "#000000" },
     });
 
-    const el = document.createElement("div");
-    el.style.width = "18px";
-    el.style.height = "18px";
-    el.style.display = "flex";
-    el.style.alignItems = "center";
-    el.style.justifyContent = "center";
-    el.style.pointerEvents = "auto";
-
-    const dot = document.createElement("div");
-    dot.style.width = "18px";
-    dot.style.height = "18px";
-    dot.style.borderRadius = "50%";
-    dot.style.backgroundColor = "#2563eb";
-    dot.style.border = "2px solid white";
-    dot.style.boxShadow = "0 0 4px rgba(0,0,0,0.3)";
-    dot.style.cursor = "pointer";
-    dot.style.transform = "scale(1)";
-    dot.style.transition = "transform 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease";
-
-    el.appendChild(dot);
-
-    dot.addEventListener("click", () => {
-  dot.style.backgroundColor = "#dc2626";
-  dot.style.transform = "scale(1.25)";
-  dot.style.boxShadow = "0 0 0 3px rgba(220,38,38,0.18)";
-
-  map.flyTo({
-    center: vehicle.lngLat,
-    zoom: 16,
-    duration: 800,
+    // Marqueur initial
+    vehicleMarker = createVehicleMarker(DEFAULT_LNGLAT);
   });
-});
 
-new maplibregl.Marker({ element: el })
-  .setLngLat(vehicle.lngLat)
-  .addTo(map);
+  // ── Géocodage + itinéraire (inchangé) ────────────────────────────────────
+  async function geocodeAddress(query: string): Promise<{ lngLat: [number, number]; label: string }> {
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&q=${encodeURIComponent(query)}`;
+    const response = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!response.ok) throw new Error("Échec du géocodage.");
+    const data = (await response.json()) as NominatimResult[];
+    if (!data[0]) throw new Error("Adresse introuvable.");
+    return { lngLat: [Number(data[0].lon), Number(data[0].lat)], label: data[0].display_name };
+  }
 
-    });
-
-   // new maplibregl.Marker({ element: el }).setLngLat(vehicle.lngLat).addTo(map);
-
+  async function fetchRoute(start: [number, number], end: [number, number]) {
+    const url = `https://router.project-osrm.org/route/v1/driving/${start[0]},${start[1]};${end[0]},${end[1]}?overview=full&geometries=geojson`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Échec du calcul d'itinéraire.");
+    const data = (await response.json()) as OsrmRouteResponse;
+    if (data.code !== "Ok" || !data.routes?.[0]) throw new Error("Aucun itinéraire trouvé.");
+    const route = data.routes[0]!;
+    return { coordinates: route.geometry.coordinates as [number, number][], distance: route.distance, duration: route.duration };
+  }
 
   async function handleRouteSearch(): Promise<void> {
     const query = input.value.trim();
-
-    if (query.length === 0) {
-      setResultMessage("Veuillez saisir une adresse.", true);
-      clearRoute();
-      return;
-    }
+    if (!query) { setResultMessage("Veuillez saisir une adresse.", true); clearRoute(); return; }
 
     button.disabled = true;
     button.textContent = "Calcul en cours...";
-    setResultMessage("Recherche de l’adresse et calcul d’itinéraire...");
+    setResultMessage("Recherche et calcul d'itinéraire...");
 
     try {
       const destination = await geocodeAddress(query);
-      const route = await fetchRoute(vehicle.lngLat, destination.lngLat);
+      const route = await fetchRoute(vehicleLngLat, destination.lngLat);
 
       updateRouteLine(route.coordinates);
       updateDestinationPoint(destination.lngLat);
-
-      if (destinationMarker) {
-        destinationMarker.remove();
-      }
+      destinationMarker?.remove();
 
       const bounds = new maplibregl.LngLatBounds();
-      route.coordinates.forEach((coord) => bounds.extend(coord));
-      bounds.extend(vehicle.lngLat);
+      route.coordinates.forEach((c) => bounds.extend(c));
+      bounds.extend(vehicleLngLat);
       bounds.extend(destination.lngLat);
-
-      map.fitBounds(bounds, {
-        padding: 50,
-        duration: 800,
-      });
-
-      const distanceKm = (route.distance / 1000).toFixed(2);
-      const durationMin = Math.ceil(route.duration / 60);
+      map.fitBounds(bounds, { padding: 50, duration: 800 });
 
       setResultMessage(
-        `Itinéraire trouvé.<br><strong>Destination :</strong> ${destination.label}<br><strong>Distance :</strong> ${distanceKm} km<br><strong>Durée estimée :</strong> ${durationMin} min`,
+        `Itinéraire trouvé.<br><strong>Destination :</strong> ${destination.label}<br>` +
+        `<strong>Distance :</strong> ${(route.distance / 1000).toFixed(2)} km<br>` +
+        `<strong>Durée estimée :</strong> ${Math.ceil(route.duration / 60)} min`,
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Erreur inconnue.";
       clearRoute();
-      setResultMessage(message, true);
+      setResultMessage(error instanceof Error ? error.message : "Erreur inconnue.", true);
     } finally {
       button.disabled = false;
-      button.textContent = "Calculer l’itinéraire";
+      button.textContent = "Calculer l'itinéraire";
     }
   }
 
-button.addEventListener("click", () => {
-  void handleRouteSearch();
-});
+  button.addEventListener("click", () => { void handleRouteSearch(); });
+  resetButton.addEventListener("click", resetView);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); void handleRouteSearch(); } });
 
-resetButton.addEventListener("click", () => {
-  resetView();
-});
+  // ── onRender : sharedPanelState + GPS temps réel ──────────────────────────
+  context.onRender = (renderState: any, done: () => void) => {
 
-input.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    void handleRouteSearch();
-  }
-});
+    // 1. Véhicule actif depuis le panel Flotte
+    const shared      = renderState.sharedPanelState as { vehicleId?: string } | undefined;
+    const newVehicleId = shared?.vehicleId;
 
-context.onRender = (_renderState, done) => {
-  done();
-};
+    if (newVehicleId !== currentVehicleId) {
+      currentVehicleId = newVehicleId;
 
-const resizeObserver = new ResizeObserver(() => {
-  map.resize();
-});
+      // Met à jour le badge
+      vehicleBadge.textContent = newVehicleId
+        ? `VÉHICULE ${newVehicleId.toUpperCase()}`
+        : "EN ATTENTE…";
 
-resizeObserver.observe(root);
+      // Reset GPS et route au changement de véhicule
+      gpsStatus.textContent = "📡 GPS : en attente…";
+      gpsStatus.style.color = "#6b7280";
+      clearRoute();
+      resetView();
 
-return () => {
-  resizeObserver.disconnect();
+      // Re-souscription au topic GPS du bon véhicule
+      if (newVehicleId) {
+        context.subscribe([{ topic: `/vehicle/${newVehicleId}/gps` }]);
+      } else {
+        context.subscribe([]);
+      }
+    }
 
-  if (destinationMarker) {
-    destinationMarker.remove();
-  }
+    // 2. Messages GPS temps réel
+    if (currentVehicleId) {
+      const frame = renderState.currentFrame as readonly MessageEvent<unknown>[] | undefined;
+      const gpsTopic = `/vehicle/${currentVehicleId}/gps`;
+      const last = frame?.findLast((m: any) => m.topic === gpsTopic);
 
-  map.remove();
-  root.innerHTML = "";
-};
+      if (last) {
+        const msg = last.message as GpsMessage;
+        if (msg.latitude != null && msg.longitude != null) {
+          updateVehiclePosition([msg.longitude, msg.latitude]);
+        }
+      }
+    }
+
+    done();
+  };
+
+  context.watch("currentFrame");
+  context.watch("sharedPanelState"); // 👈 écoute le panel Flotte
+
+  // ── Resize observer (inchangé) ────────────────────────────────────────────
+  const resizeObserver = new ResizeObserver(() => { map.resize(); });
+  resizeObserver.observe(root);
+
+  return () => {
+    resizeObserver.disconnect();
+    destinationMarker?.remove();
+    vehicleMarker?.remove();
+    map.remove();
+    root.innerHTML = "";
+  };
 }
