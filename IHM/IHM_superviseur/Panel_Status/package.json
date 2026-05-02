@@ -1,5 +1,6 @@
 {
   "name": "foxglove-vehicle-status",
+  "publisher": "unknown",
   "displayName": "Statut Véhicule",
   "description": "Affiche en temps réel si le véhicule est Libre, Occupé ou En déplacement.",
   "version": "1.0.0",

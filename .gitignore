@@ -1,0 +1,13 @@
+# Dépendances
+node_modules/
+
+# Fichiers compilés
+dist/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
