@@ -1,9 +1,10 @@
 import { PanelExtensionContext } from "@foxglove/extension";
 import { useState, useLayoutEffect, useRef } from "react";
-import { createRoot } from "react-dom/client"; // ✅ createRoot (React 18)
+import { createRoot } from "react-dom/client";
 
 const RADIUS = 54;
 const CIRC   = 2 * Math.PI * RADIUS;
+const BATT_TOPIC = "/can_ami/signal/Charge_batterie_Traction";
 
 function couleur(v: number): string {
   if (v > 60) return "#4caf50";
@@ -30,24 +31,19 @@ function BatteriePanel({ context }: { context: PanelExtensionContext }) {
         currentVehicleRef.current = newId;
         setVehicleId(newId);
 
-        // Reset à chaque changement de véhicule
         setValeur(0);
         setEnCharge(false);
         setConnecte(false);
-
-        // Re-souscription au bon topic
-        if (newId) {
-          context.subscribe([{ topic: `/vehicle/${newId}/batterie` }]);
-        } else {
-          context.subscribe([]);
-        }
       }
 
-      // ── 2. Lecture des messages ──
+      // ── 2. Souscription au topic fixe ──
+      context.subscribe([{ topic: BATT_TOPIC }]);
+
+      // ── 3. Lecture des messages ──
       const messages = renderState.currentFrame ?? [];
       const last = [...messages]
         .reverse()
-        .find((m: any) => m.topic === `/vehicle/${currentVehicleRef.current}/batterie`);
+        .find((m: any) => m.topic === BATT_TOPIC);
 
       if (last?.message) {
         const msg = last.message as any;
@@ -60,14 +56,13 @@ function BatteriePanel({ context }: { context: PanelExtensionContext }) {
     };
 
     context.watch("currentFrame");
-    context.watch("sharedPanelState"); // 👈 écoute le panel Flotte
+    context.watch("sharedPanelState");
 
   }, [context]);
 
   const pct    = Math.round(valeur);
   const offset = CIRC - (pct / 100) * CIRC;
   const color  = couleur(pct);
-  const topic  = vehicleId ? `/vehicle/${vehicleId}/batterie` : null;
 
   return (
     <div style={{
@@ -77,18 +72,16 @@ function BatteriePanel({ context }: { context: PanelExtensionContext }) {
       fontFamily: "'Courier New', monospace",
     }}>
 
-      {/* Titre dynamique selon véhicule sélectionné */}
       <div style={{ fontSize: 11, letterSpacing: 3, color: "#4dd0e1" }}>
         {vehicleId ? `VÉHICULE ${vehicleId.toUpperCase()}` : "EN ATTENTE…"}
       </div>
 
-      {/* Jauge circulaire */}
       <div style={{ position: "relative", width: 160, height: 160 }}>
         <svg width="160" height="160">
           <circle cx="80" cy="80" r={RADIUS}
             fill="none" stroke="#1e2d36" strokeWidth="14"/>
           <circle cx="80" cy="80" r={RADIUS}
-            fill="none" stroke={vehicleId ? color : "#1e2d36"}
+            fill="none" stroke={color}
             strokeWidth="14"
             strokeDasharray={CIRC}
             strokeDashoffset={offset}
@@ -102,18 +95,15 @@ function BatteriePanel({ context }: { context: PanelExtensionContext }) {
           display: "flex", flexDirection: "column",
           alignItems: "center", justifyContent: "center",
         }}>
-          <span style={{ fontSize: 32, fontWeight: "bold",
-            color: vehicleId ? color : "#556677", lineHeight: 1 }}>
-            {vehicleId ? `${pct}%` : "—"}
+          <span style={{ fontSize: 32, fontWeight: "bold", color, lineHeight: 1 }}>
+            {`${pct}%`}
           </span>
-          <span style={{ fontSize: 10, letterSpacing: 1,
-            color: vehicleId ? color : "#556677", marginTop: 6 }}>
+          <span style={{ fontSize: 10, letterSpacing: 1, color, marginTop: 6 }}>
             {enCharge ? "⚡ EN CHARGE" : "BATTERIE"}
           </span>
         </div>
       </div>
 
-      {/* Indicateur connexion */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span style={{
           width: 8, height: 8, borderRadius: "50%",
@@ -121,7 +111,7 @@ function BatteriePanel({ context }: { context: PanelExtensionContext }) {
           display: "inline-block",
         }}/>
         <span style={{ fontSize: 10, color: "#556677" }}>
-          {connecte ? topic : (vehicleId ? "En attente…" : "Aucun véhicule")}
+          {connecte ? BATT_TOPIC : (vehicleId ? "En attente…" : "Aucun véhicule")}
         </span>
       </div>
     </div>
@@ -133,7 +123,7 @@ export function initBatteriePanel(context: PanelExtensionContext): () => void {
   container.style.width  = "100%";
   container.style.height = "100%";
   context.panelElement.appendChild(container);
-  const root = createRoot(container); // ✅ React 18
+  const root = createRoot(container);
   root.render(<BatteriePanel context={context} />);
   return () => root.unmount();
 }

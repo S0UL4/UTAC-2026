@@ -1,13 +1,13 @@
 import asyncio, json, time, psutil
 from foxglove_websocket.server import FoxgloveServer
 
-VEHICLE_ID = "Alpha"  # 👈 changer par véhicule (doit correspondre au nom dans le panel Flotte)
+VEHICLE_ID = "Alpha"
 
 async def main():
     async with FoxgloveServer("0.0.0.0", 8765, f"Vehicule_{VEHICLE_ID}") as server:
 
         chan_batterie = await server.add_channel({
-            "topic": f"/vehicle/{VEHICLE_ID}/batterie",  # 👈 topic dynamique
+            "topic": "/can_ami/signal/Charge_batterie_Traction",
             "encoding": "json",
             "schemaName": "BatterieStatus",
             "schema": json.dumps({
@@ -21,7 +21,7 @@ async def main():
         })
 
         print(f"🟢 Serveur lancé — véhicule : {VEHICLE_ID}")
-        print(f"📡 Topic : /vehicle/{VEHICLE_ID}/batterie")
+        print(f"📡 Topic : /can_ami/signal/Charge_batterie_Traction")
 
         while True:
             batt     = psutil.sensors_battery()
