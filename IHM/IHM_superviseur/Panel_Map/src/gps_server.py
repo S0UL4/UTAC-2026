@@ -1,16 +1,15 @@
 import asyncio, json, time, math
 from foxglove_websocket.server import FoxgloveServer
 
-VEHICLE_ID = "Alpha"  # 👈 même nom que dans le panel Flotte
+VEHICLE_ID = "Alpha"
 
-# Position initiale (ex: Rouen)
 LAT, LNG = 49.3852, 1.0742
 
 async def main():
     async with FoxgloveServer("0.0.0.0", 8767, f"GPS_{VEHICLE_ID}") as server:
 
         chan_gps = await server.add_channel({
-            "topic": f"/vehicle/{VEHICLE_ID}/gps",
+            "topic": "/ixblue_ins_driver/standard/navsatfix",
             "encoding": "json",
             "schemaName": "GpsPosition",
             "schema": json.dumps({
@@ -29,7 +28,6 @@ async def main():
         t = 0.0
 
         while True:
-            # Remplacez par vos vraies données GPS (serial, ROS, etc.)
             lat = LAT + 0.0001 * math.sin(t)
             lng = LNG + 0.0001 * math.cos(t)
             t  += 0.05

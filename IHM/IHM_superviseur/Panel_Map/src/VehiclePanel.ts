@@ -26,11 +26,11 @@ type OsrmRouteResponse = {
   }>;
 };
 
-// ── Point de départ par défaut (avant premier fix GPS) ────────────────────
+const GPS_TOPIC = "/ixblue_ins_driver/standard/navsatfix";
+
 const DEFAULT_LNGLAT: [number, number] = [1.0742, 49.3852];
 
 export function initVehiclePanel(context: PanelExtensionContext): () => void {
-  // ── DOM setup (inchangé) ─────────────────────────────────────────────────
   const root = context.panelElement;
   root.innerHTML = "";
   Object.assign(root.style, {
@@ -50,7 +50,6 @@ export function initVehiclePanel(context: PanelExtensionContext): () => void {
     padding: "16px", boxSizing: "border-box", overflowY: "auto", color: "#111827",
   });
 
-  // ── Sidebar header ────────────────────────────────────────────────────────
   const vehicleBadge = document.createElement("div");
   Object.assign(vehicleBadge.style, {
     fontSize: "11px", letterSpacing: "3px", color: "#2563eb",
@@ -116,13 +115,11 @@ export function initVehiclePanel(context: PanelExtensionContext): () => void {
   container.appendChild(sidebar);
   root.appendChild(container);
 
-  // ── État local ────────────────────────────────────────────────────────────
   let currentVehicleId: string | undefined = undefined;
   let vehicleLngLat: [number, number]      = DEFAULT_LNGLAT;
   let vehicleMarker: maplibregl.Marker | undefined;
   let destinationMarker: maplibregl.Marker | undefined;
 
-  // ── Carte MapLibre (inchangée) ────────────────────────────────────────────
   const map = new maplibregl.Map({
     container: mapContainer,
     style: {
@@ -147,7 +144,6 @@ export function initVehiclePanel(context: PanelExtensionContext): () => void {
 
   map.addControl(new maplibregl.NavigationControl(), "top-right");
 
-  // ── Helpers carte ─────────────────────────────────────────────────────────
   function setResultMessage(message: string, isError = false): void {
     resultBox.innerHTML = `<p style="margin:0;color:${isError ? "#b91c1c" : "#111827"};">${message}</p>`;
   }
@@ -184,7 +180,6 @@ export function initVehiclePanel(context: PanelExtensionContext): () => void {
     map.flyTo({ center: vehicleLngLat, zoom: 16, duration: 800 });
   }
 
-  // ── Marqueur véhicule (point bleu) ────────────────────────────────────────
   function createVehicleMarker(lngLat: [number, number]): maplibregl.Marker {
     const el  = document.createElement("div");
     const dot = document.createElement("div");
@@ -201,23 +196,16 @@ export function initVehiclePanel(context: PanelExtensionContext): () => void {
     return new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
   }
 
-  // ── Mise à jour de la position GPS du véhicule ────────────────────────────
   function updateVehiclePosition(lngLat: [number, number]): void {
     vehicleLngLat = lngLat;
-
-    // Déplace le marqueur existant ou le recrée
     if (vehicleMarker) {
       vehicleMarker.setLngLat(lngLat);
     }
-
-    gpsStatus.textContent =
-      `📡 GPS : ${lngLat[1].toFixed(5)}, ${lngLat[0].toFixed(5)}`;
+    gpsStatus.textContent = `📡 GPS : ${lngLat[1].toFixed(5)}, ${lngLat[0].toFixed(5)}`;
     gpsStatus.style.color = "#059669";
   }
 
-  // ── Chargement de la carte ────────────────────────────────────────────────
   map.on("load", () => {
-    // Sources et couches de tracé (inchangées)
     map.addSource("route-line", {
       type: "geojson",
       data: { type: "Feature", geometry: { type: "LineString", coordinates: [] }, properties: {} },
@@ -236,11 +224,12 @@ export function initVehiclePanel(context: PanelExtensionContext): () => void {
       paint: { "circle-radius": 0, "circle-color": "#000000" },
     });
 
-    // Marqueur initial
     vehicleMarker = createVehicleMarker(DEFAULT_LNGLAT);
+
+    // Souscription immédiate au topic fixe
+    context.subscribe([{ topic: GPS_TOPIC }]);
   });
 
-  // ── Géocodage + itinéraire (inchangé) ────────────────────────────────────
   async function geocodeAddress(query: string): Promise<{ lngLat: [number, number]; label: string }> {
     const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&q=${encodeURIComponent(query)}`;
     const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -300,46 +289,26 @@ export function initVehiclePanel(context: PanelExtensionContext): () => void {
   resetButton.addEventListener("click", resetView);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); void handleRouteSearch(); } });
 
-  // ── onRender : sharedPanelState + GPS temps réel ──────────────────────────
   context.onRender = (renderState: any, done: () => void) => {
 
-    // 1. Véhicule actif depuis le panel Flotte
     const shared      = renderState.sharedPanelState as { vehicleId?: string } | undefined;
     const newVehicleId = shared?.vehicleId;
 
     if (newVehicleId !== currentVehicleId) {
       currentVehicleId = newVehicleId;
-
-      // Met à jour le badge
       vehicleBadge.textContent = newVehicleId
         ? `VÉHICULE ${newVehicleId.toUpperCase()}`
         : "EN ATTENTE…";
-
-      // Reset GPS et route au changement de véhicule
-      gpsStatus.textContent = "📡 GPS : en attente…";
-      gpsStatus.style.color = "#6b7280";
-      clearRoute();
-      resetView();
-
-      // Re-souscription au topic GPS du bon véhicule
-      if (newVehicleId) {
-        context.subscribe([{ topic: `/vehicle/${newVehicleId}/gps` }]);
-      } else {
-        context.subscribe([]);
-      }
     }
 
-    // 2. Messages GPS temps réel
-    if (currentVehicleId) {
-      const frame = renderState.currentFrame as readonly MessageEvent<unknown>[] | undefined;
-      const gpsTopic = `/vehicle/${currentVehicleId}/gps`;
-      const last = frame && [...frame].reverse().find((m: any) => m.topic === gpsTopic);
+    // Lecture des messages GPS
+    const frame = renderState.currentFrame as readonly MessageEvent<unknown>[] | undefined;
+    const last = frame && [...frame].reverse().find((m: any) => m.topic === GPS_TOPIC);
 
-      if (last) {
-        const msg = last.message as GpsMessage;
-        if (msg.latitude != null && msg.longitude != null) {
-          updateVehiclePosition([msg.longitude, msg.latitude]);
-        }
+    if (last) {
+      const msg = last.message as GpsMessage;
+      if (msg.latitude != null && msg.longitude != null) {
+        updateVehiclePosition([msg.longitude, msg.latitude]);
       }
     }
 
@@ -347,9 +316,8 @@ export function initVehiclePanel(context: PanelExtensionContext): () => void {
   };
 
   context.watch("currentFrame");
-  context.watch("sharedPanelState"); // 👈 écoute le panel Flotte
+  context.watch("sharedPanelState");
 
-  // ── Resize observer (inchangé) ────────────────────────────────────────────
   const resizeObserver = new ResizeObserver(() => { map.resize(); });
   resizeObserver.observe(root);
 
