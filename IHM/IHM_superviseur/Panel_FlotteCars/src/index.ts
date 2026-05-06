@@ -1,4 +1,4 @@
-import { ExtensionContext, PanelExtensionContext } from "@foxglove/studio";
+import { ExtensionContext, PanelExtensionContext } from "@foxglove/extension";
 import ReactDOM from "react-dom/client";
 import React from "react";
 import { ControlPanel } from "./ControlPanel";

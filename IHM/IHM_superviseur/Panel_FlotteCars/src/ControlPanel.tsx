@@ -1,40 +1,30 @@
-import { PanelExtensionContext } from "@foxglove/studio";
+import { PanelExtensionContext } from "@foxglove/extension";
 import { useEffect, useLayoutEffect, useState } from "react";
 
 const ALL_VEHICLES = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"];
 
 export function ControlPanel({ context }: { context: PanelExtensionContext }) {
-  const [selected, setSelected]     = useState<string>("Alpha");
+  const [selected, setSelected]       = useState<string>("Alpha");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // ── Init : on lit l'état partagé existant au montage ──
   useLayoutEffect(() => {
     context.onRender = (renderState: any, done: () => void) => {
-      // Si un autre panel a déjà un vehicleId (ex: rechargement de layout),
-      // on se synchronise avec lui
       const shared = renderState.sharedPanelState as { vehicleId?: string } | undefined;
       if (shared?.vehicleId && shared.vehicleId !== selected) {
         setSelected(shared.vehicleId);
       }
       done();
     };
-    context.watch("sharedPanelState"); // 👈 indispensable
-
+    context.watch("sharedPanelState");
   }, [context]);
 
-  // ── Sélection d'un véhicule ──
   const handleSelectVehicle = (name: string) => {
     setSelected(name);
-
-    // ✅ Remplace context.setVariable → sharedPanelState
-    // Tous les panels abonnés reçoivent instantanément le nouveau vehicleId
     context.setSharedPanelState({ vehicleId: name });
   };
 
-  // ── Init au premier rendu ──
   useEffect(() => {
     context.setSharedPanelState({ vehicleId: "Alpha" });
-    // ❌ Supprimé : context.setVariable?.("selected_vehicle", "Alpha");
   }, [context]);
 
   const filtered = ALL_VEHICLES.filter((v) =>
