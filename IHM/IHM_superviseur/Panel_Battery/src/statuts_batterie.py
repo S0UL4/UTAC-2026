@@ -7,7 +7,7 @@ async def main():
     async with FoxgloveServer("0.0.0.0", 8765, f"Vehicule_{VEHICLE_ID}") as server:
 
         chan_batterie = await server.add_channel({
-            "topic": "/can_ami/signal/Charge_batterie_Traction",
+            "topic": "/can_ami/signal/Charge_Batterie_Traction",
             "encoding": "json",
             "schemaName": "BatterieStatus",
             "schema": json.dumps({
@@ -21,7 +21,7 @@ async def main():
         })
 
         print(f"🟢 Serveur lancé — véhicule : {VEHICLE_ID}")
-        print(f"📡 Topic : /can_ami/signal/Charge_batterie_Traction")
+        print(f"📡 Topic : /can_ami/signal/Charge_Batterie_Traction")
 
         while True:
             batt     = psutil.sensors_battery()

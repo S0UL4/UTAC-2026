@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 
 const RADIUS = 54;
 const CIRC   = 2 * Math.PI * RADIUS;
-const BATT_TOPIC = "/can_ami/signal/Charge_batterie_Traction";
+const BATT_TOPIC = "/can_ami/signal/Charge_Batterie_Traction";
 
 function couleur(v: number): string {
   if (v > 60) return "#4caf50";
@@ -20,45 +20,41 @@ function BatteriePanel({ context }: { context: PanelExtensionContext }) {
 
   const currentVehicleRef = useRef<string | undefined>(undefined);
 
-  useLayoutEffect(() => {
-    context.onRender = (renderState: any, done: () => void) => {
+useLayoutEffect(() => {
+  // ← Déplace subscribe ICI, en dehors de onRender
+  context.subscribe([{ topic: BATT_TOPIC }]);
 
-      // ── 1. Lecture du véhicule actif (panel Flotte) ──
-      const shared = renderState.sharedPanelState as { vehicleId?: string } | undefined;
-      const newId  = shared?.vehicleId;
+  context.onRender = (renderState: any, done: () => void) => {
+    const shared = renderState.sharedPanelState as { vehicleId?: string } | undefined;
+    const newId = shared?.vehicleId;
 
-      if (newId !== currentVehicleRef.current) {
-        currentVehicleRef.current = newId;
-        setVehicleId(newId);
+    if (newId !== currentVehicleRef.current) {
+      currentVehicleRef.current = newId;
+      setVehicleId(newId);
+      setValeur(0);
+      setEnCharge(false);
+      setConnecte(false);
+    }
 
-        setValeur(0);
-        setEnCharge(false);
-        setConnecte(false);
-      }
+    const messages = renderState.currentFrame ?? [];
+    const last = [...messages]
+      .reverse()
+      .find((m: any) => m.topic === BATT_TOPIC);
 
-      // ── 2. Souscription au topic fixe ──
-      context.subscribe([{ topic: BATT_TOPIC }]);
+    if (last?.message) {
+      const msg = last.message as any;
+      setValeur(msg.value ?? 0);
+      setEnCharge(msg.en_charge ?? false);
+      setConnecte(true);
+    }
 
-      // ── 3. Lecture des messages ──
-      const messages = renderState.currentFrame ?? [];
-      const last = [...messages]
-        .reverse()
-        .find((m: any) => m.topic === BATT_TOPIC);
+    done();
+  };
 
-      if (last?.message) {
-        const msg = last.message as any;
-        setValeur(msg.valeur    ?? 0);
-        setEnCharge(msg.en_charge ?? false);
-        setConnecte(true);
-      }
+  context.watch("currentFrame");
+  context.watch("sharedPanelState");
 
-      done();
-    };
-
-    context.watch("currentFrame");
-    context.watch("sharedPanelState");
-
-  }, [context]);
+}, [context]);
 
   const pct    = Math.round(valeur);
   const offset = CIRC - (pct / 100) * CIRC;
