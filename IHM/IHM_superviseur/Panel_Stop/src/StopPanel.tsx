@@ -23,21 +23,26 @@ const BASE_BTN: CSSProperties = {
 };
 
 function StopPanel({ context }: { context: PanelExtensionContext }) {
-  const [vehicleId, setVehicleId]   = useState<string | undefined>(undefined);
-  const [mode, setMode]             = useState<VehicleMode>("RUNNING");
-  const [lastCmd, setLastCmd]       = useState<string | undefined>(undefined);
-  const [confirm, setConfirm]       = useState(false);
-  const [cmdLog, setCmdLog]         = useState<string[]>([]);
+  const [vehicleId, setVehicleId]     = useState<string | undefined>(undefined);
+  const [mode, setMode]               = useState<VehicleMode>("RUNNING");
+  const [lastCmd, setLastCmd]         = useState<string | undefined>(undefined);
+  const [confirm, setConfirm]         = useState(false);
+  const [cmdLog, setCmdLog]           = useState<string[]>([]);
   const [brakeActive, setBrakeActive] = useState(false);
 
   const currentVehicleRef = useRef<string | undefined>(undefined);
-  const advertised = useRef(false);
+  const advertised        = useRef(false);
 
-  // ── Foxglove ──────────────────────────────────────────────────────────────
   useLayoutEffect(() => {
-    // Advertise le topic frein une seule fois
+    // Advertise le topic frein une seule fois avec le schéma complet
     if (!advertised.current) {
-      context.advertise?.(BRAKE_TOPIC, "std_msgs/msg/Int32");
+      context.advertise?.(BRAKE_TOPIC, "std_msgs/msg/Int32", {
+        datatypes: new Map([
+          ["std_msgs/msg/Int32", {
+            definitions: [{ name: "data", type: "int32" }]
+          }]
+        ])
+      });
       advertised.current = true;
     }
 
@@ -77,12 +82,12 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
     context.watch("sharedPanelState");
   }, [context]);
 
-  // ── Publication frein à 100% ──────────────────────────────────────────────
+  // ── Publication frein ─────────────────────────────────────────────────────
   function publishBrake(value: number): void {
     context.publish?.(BRAKE_TOPIC, { data: value });
     setBrakeActive(value === 100);
 
-    const entry = `${new Date().toLocaleTimeString()} — 🛑 Frein ${value}% → ${BRAKE_TOPIC}`;
+    const entry = `${new Date().toLocaleTimeString()} — 🟣 Frein ${value}% → ${BRAKE_TOPIC}`;
     setCmdLog((prev) => [entry, ...prev].slice(0, 10));
     setLastCmd(`Frein ${value}%`);
   }
@@ -115,7 +120,7 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
 
     if (command === "EMERGENCY_STOP") {
       setMode("STOPPED");
-      publishBrake(100); // 👈 frein à 100% sur arrêt d'urgence
+      publishBrake(100); // 👈 frein 100% automatique
     }
     if (command === "PAUSE")          setMode("PAUSED");
     if (command === "RESUME")         { setMode("RUNNING"); publishBrake(0); }
@@ -163,7 +168,7 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
         )}
       </div>
 
-      {/* ── FREIN MANUEL 100% ── */}
+      {/* ── FREIN MANUEL ── */}
       <button
         onClick={() => publishBrake(brakeActive ? 0 : 100)}
         style={{
