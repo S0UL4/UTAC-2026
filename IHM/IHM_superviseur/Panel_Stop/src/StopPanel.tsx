@@ -13,6 +13,8 @@ type CommandMessage = {
 
 type VehicleMode = "RUNNING" | "PAUSED" | "STOPPED" | "RETURNING";
 
+const BRAKE_TOPIC = "/test_control_frein";
+
 // ── Styles partagés ────────────────────────────────────────────────────────
 const BASE_BTN: CSSProperties = {
   width: "100%", padding: "14px", border: "none", borderRadius: "10px",
@@ -24,27 +26,34 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
   const [vehicleId, setVehicleId]   = useState<string | undefined>(undefined);
   const [mode, setMode]             = useState<VehicleMode>("RUNNING");
   const [lastCmd, setLastCmd]       = useState<string | undefined>(undefined);
-  const [confirm, setConfirm]       = useState(false);  // popup confirmation urgence
+  const [confirm, setConfirm]       = useState(false);
   const [cmdLog, setCmdLog]         = useState<string[]>([]);
+  const [brakeActive, setBrakeActive] = useState(false);
 
   const currentVehicleRef = useRef<string | undefined>(undefined);
+  const advertised = useRef(false);
 
-  // ── Foxglove : écoute sharedPanelState ────────────────────────────────────
+  // ── Foxglove ──────────────────────────────────────────────────────────────
   useLayoutEffect(() => {
+    // Advertise le topic frein une seule fois
+    if (!advertised.current) {
+      context.advertise?.(BRAKE_TOPIC, "std_msgs/msg/Int32");
+      advertised.current = true;
+    }
+
     context.onRender = (renderState: any, done: () => void) => {
-      const shared     = renderState.sharedPanelState as { vehicleId?: string } | undefined;
-      const newId      = shared?.vehicleId;
+      const shared = renderState.sharedPanelState as { vehicleId?: string } | undefined;
+      const newId  = shared?.vehicleId;
 
       if (newId !== currentVehicleRef.current) {
         currentVehicleRef.current = newId;
         setVehicleId(newId);
 
-        // Reset à chaque changement de véhicule
         setMode("RUNNING");
         setLastCmd(undefined);
         setConfirm(false);
+        setBrakeActive(false);
 
-        // On s'abonne au topic de feedback du véhicule (état retour)
         if (newId) {
           context.subscribe([{ topic: `/vehicle/${newId}/cmd_feedback` }]);
         } else {
@@ -52,7 +61,7 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
         }
       }
 
-      // Lecture du feedback (optionnel — si votre backend renvoie un état)
+      // Lecture du feedback
       const frame = renderState.currentFrame ?? [];
       const feedbackTopic = `/vehicle/${currentVehicleRef.current}/cmd_feedback`;
       const last = [...frame].reverse().find((m: any) => m.topic === feedbackTopic);
@@ -68,13 +77,21 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
     context.watch("sharedPanelState");
   }, [context]);
 
-  // ── Publication de commande via topic ROS ─────────────────────────────────
+  // ── Publication frein à 100% ──────────────────────────────────────────────
+  function publishBrake(value: number): void {
+    context.publish?.(BRAKE_TOPIC, { data: value });
+    setBrakeActive(value === 100);
+
+    const entry = `${new Date().toLocaleTimeString()} — 🛑 Frein ${value}% → ${BRAKE_TOPIC}`;
+    setCmdLog((prev) => [entry, ...prev].slice(0, 10));
+    setLastCmd(`Frein ${value}%`);
+  }
+
+  // ── Publication commande véhicule ─────────────────────────────────────────
   function publishCommand(command: CommandType): void {
     if (!vehicleId) return;
 
     const topic = `/vehicle/${vehicleId}/cmd_stop`;
-
-    // Advertise si pas encore fait
     context.advertise?.(topic, "std_msgs/String");
 
     const payload: CommandMessage = {
@@ -96,10 +113,12 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
     setCmdLog((prev) => [entry, ...prev].slice(0, 10));
     setLastCmd(label[command]);
 
-    // Mise à jour du mode local (en attendant le feedback)
-    if (command === "EMERGENCY_STOP") setMode("STOPPED");
+    if (command === "EMERGENCY_STOP") {
+      setMode("STOPPED");
+      publishBrake(100); // 👈 frein à 100% sur arrêt d'urgence
+    }
     if (command === "PAUSE")          setMode("PAUSED");
-    if (command === "RESUME")         setMode("RUNNING");
+    if (command === "RESUME")         { setMode("RUNNING"); publishBrake(0); }
     if (command === "RETURN_TO_BASE") setMode("RETURNING");
   }
 
@@ -144,6 +163,20 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
         )}
       </div>
 
+      {/* ── FREIN MANUEL 100% ── */}
+      <button
+        onClick={() => publishBrake(brakeActive ? 0 : 100)}
+        style={{
+          ...BASE_BTN,
+          background: brakeActive ? "#7c3aed" : "#4b1d94",
+          color: "white",
+          boxShadow: brakeActive ? "0 0 20px rgba(124,58,237,0.5)" : "none",
+          fontSize: "13px",
+        }}
+      >
+        {brakeActive ? "🟣 FREIN ACTIF (100%) — Relâcher" : "🟣 APPLIQUER FREIN (100%)"}
+      </button>
+
       {/* ── ARRÊT D'URGENCE ── */}
       {!confirm ? (
         <button
@@ -160,7 +193,6 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
           🛑 ARRÊT D'URGENCE
         </button>
       ) : (
-        /* Popup confirmation */
         <div style={{
           border: "2px solid #dc2626", borderRadius: "10px",
           padding: "16px", background: "#1a0a0a",
@@ -217,7 +249,7 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
         🏠 RETOUR À LA BASE
       </button>
 
-      {/* Dernière commande envoyée */}
+      {/* Dernière commande */}
       {lastCmd && (
         <div style={{
           fontSize: "11px", color: "#4dd0e1", textAlign: "center",
@@ -227,7 +259,7 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
         </div>
       )}
 
-      {/* Journal des commandes */}
+      {/* Journal */}
       {cmdLog.length > 0 && (
         <div style={{ flex: 1, overflowY: "auto" }}>
           <div style={{ fontSize: "10px", color: "#4b5563", marginBottom: "6px", letterSpacing: "1px" }}>
@@ -244,7 +276,6 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
         </div>
       )}
 
-      {/* Message si aucun véhicule */}
       {noVehicle && (
         <div style={{ textAlign: "center", color: "#4b5563", fontSize: "12px", marginTop: "auto" }}>
           Sélectionnez un véhicule dans le panel Flotte
