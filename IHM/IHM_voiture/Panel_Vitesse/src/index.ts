@@ -1,4 +1,6 @@
 import { ExtensionContext } from "@foxglove/extension";
+import { createRoot } from "react-dom/client";
+import React from "react";
 import VitessePanel from "./VitessePanel";
 
 export function activate(extensionContext: ExtensionContext): void {
@@ -6,11 +8,12 @@ export function activate(extensionContext: ExtensionContext): void {
     name: "Vitesse",
     initPanel: (context) => {
       const div = document.createElement("div");
+      div.style.width  = "100%";
       div.style.height = "100%";
       context.panelElement.appendChild(div);
-      const React = require("react");
-      const ReactDOM = require("react-dom");
-      ReactDOM.render(React.createElement(VitessePanel, { context }), div);
+      const root = createRoot(div);
+      root.render(React.createElement(VitessePanel, { context }));
+      return () => root.unmount();
     },
   });
 }
