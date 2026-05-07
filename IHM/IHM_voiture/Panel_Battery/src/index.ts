@@ -3,7 +3,7 @@ import { ExtensionContext } from "@foxglove/extension";
 
 export function activate(extensionContext: ExtensionContext): void {
   extensionContext.registerPanel({
-    name: "Batterie V-001",
+    name: "Batterie",
     initPanel: initBatteriePanel,
   });
 }
