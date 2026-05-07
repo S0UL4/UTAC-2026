@@ -25,8 +25,7 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
     context.onRender = (renderState: any, done: () => void) => {
 
       // ── 1. Lecture du véhicule actif depuis le panel Flotte ──
-      const shared = renderState.sharedPanelState as { vehicleId?: string } | undefined;
-      const newVehicleId = shared?.vehicleId;
+      const newVehicleId = renderState.variables?.get("selected_vehicle") as string | undefined;
 
       if (newVehicleId !== currentVehicleIdRef.current) {
         currentVehicleIdRef.current = newVehicleId;
@@ -49,7 +48,8 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
       if (frame && frame.length > 0) {
         const lastEvent = frame[frame.length - 1];
         if (lastEvent) {
-          const data = lastEvent.message as StatusData;
+          const raw = lastEvent.message as { data: string };
+          const data = JSON.parse(raw.data) as StatusData;
           if (data?.state) {
             setVehicleState(data.state as VehicleState);
             setMsgCount((c) => c + 1);
@@ -61,7 +61,7 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
     };
 
     context.watch("currentFrame");
-    context.watch("sharedPanelState"); // 👈 indispensable pour réagir au panel Flotte
+    context.watch("variables");
 
   }, [context]);
 
