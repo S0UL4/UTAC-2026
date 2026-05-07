@@ -9,22 +9,22 @@ export function ControlPanel({ context }: { context: PanelExtensionContext }) {
 
   useLayoutEffect(() => {
     context.onRender = (renderState: any, done: () => void) => {
-      const shared = renderState.sharedPanelState as { vehicleId?: string } | undefined;
-      if (shared?.vehicleId && shared.vehicleId !== selected) {
-        setSelected(shared.vehicleId);
+      const newId = renderState.variables?.get("selected_vehicle") as string | undefined;
+      if (newId != null && newId !== selected) {
+        setSelected(newId);
       }
       done();
     };
-    context.watch("sharedPanelState");
+    context.watch("variables");
   }, [context]);
 
   const handleSelectVehicle = (name: string) => {
     setSelected(name);
-    context.setSharedPanelState({ vehicleId: name });
+    context.setVariable("selected_vehicle", name);
   };
 
   useEffect(() => {
-    context.setSharedPanelState({ vehicleId: "Alpha" });
+    context.setVariable("selected_vehicle", "Alpha");
   }, [context]);
 
   const filtered = ALL_VEHICLES.filter((v) =>
