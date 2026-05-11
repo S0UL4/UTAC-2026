@@ -20,15 +20,15 @@ async def handler(websocket):
     print("🔗 Panel connecté")
     async for message in websocket:
         try:
-            img_msg  = json.loads(message)
-            height   = img_msg["height"]
-            width    = img_msg["width"]
-            encoding = img_msg.get("encoding", "rgb8")
-            raw      = base64.b64decode(img_msg["data"])
-            np_arr   = np.frombuffer(raw, np.uint8).reshape((height, width, -1))
+            img_msg = json.loads(message)
+            raw     = base64.b64decode(img_msg["data"])
+            np_arr  = np.frombuffer(raw, np.uint8)
+            frame   = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-            frame = cv2.cvtColor(np_arr, cv2.COLOR_RGB2BGR) if encoding == "rgb8" else np_arr
-            gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if frame is None:
+                continue
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray  = cv2.equalizeHist(gray)
 
             faces_front   = face_cascade.detectMultiScale(gray, SCALE_FACTOR, MIN_NEIGHBORS, minSize=MIN_FACE_SIZE)
@@ -57,8 +57,8 @@ async def handler(websocket):
             print(f"⚠️ Erreur : {e}")
 
 async def main():
-    print(f"🟢 Serveur démarré sur ws://localhost:8767 — en attente du panel Foxglove")
-    async with websockets.serve(handler, "localhost", 8767, max_size=10 * 1024 * 1024):
+    print(f"🟢 Serveur démarré sur ws://localhost:8765 — en attente du panel Foxglove")
+    async with websockets.serve(handler, "localhost", 8765, max_size=10 * 1024 * 1024):
         await asyncio.Future()
 
 if __name__ == "__main__":

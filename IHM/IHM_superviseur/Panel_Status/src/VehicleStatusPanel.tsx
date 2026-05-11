@@ -12,8 +12,8 @@ const STATE_META: Record<VehicleState, { label: string; color: string; icon: str
   ATTENTE:  { label: "ATTENTE…",     color: "#6b7280", icon: "?" },
 };
 
-const PYTHON_WS = "ws://localhost:8767";
-const CAMERA_TOPIC = "/image_pour_le_s8";
+const PYTHON_WS = "ws://localhost:8765";
+const CAMERA_TOPIC = "/image_pour_le_s8/compressed";
 
 function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
   const [vehicleState, setVehicleState] = useState<VehicleState>("ATTENTE");
@@ -83,9 +83,9 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
             for (let i = 0; i < bytes.length; i++) {
               binary += String.fromCharCode(bytes[i]!);
             }
-            wsRef.current.send(JSON.stringify({ ...msg, data: btoa(binary) }));
+            wsRef.current.send(JSON.stringify({ format: msg.format, data: btoa(binary) }));
           } else {
-            wsRef.current.send(JSON.stringify(msg));
+            wsRef.current.send(JSON.stringify({ format: msg.format, data: msg.data }));
           }
         }
       }
