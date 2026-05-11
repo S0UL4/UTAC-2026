@@ -1,8 +1,7 @@
 import { PanelExtensionContext, MessageEvent } from "@foxglove/extension";
-import { useLayoutEffect, useState, useRef } from "react";
+import { useLayoutEffect, useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
-type StatusData = { state: string };
 type VehicleState = "MOVING" | "FREE" | "OCCUPIED" | "UNKNOWN" | "ATTENTE";
 
 const STATE_META: Record<VehicleState, { label: string; color: string; icon: string }> = {
@@ -13,46 +12,80 @@ const STATE_META: Record<VehicleState, { label: string; color: string; icon: str
   ATTENTE:  { label: "ATTENTE…",     color: "#6b7280", icon: "?" },
 };
 
+const PYTHON_WS = "ws://localhost:8767";
+const CAMERA_TOPIC = "/image_pour_le_s8";
+
 function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
   const [vehicleState, setVehicleState] = useState<VehicleState>("ATTENTE");
   const [msgCount, setMsgCount]         = useState(0);
   const [vehicleId, setVehicleId]       = useState<string | undefined>(undefined);
-  
-  // On garde en ref le vehicleId courant pour éviter les re-subscriptions inutiles
-  const currentVehicleIdRef = useRef<string | undefined>(undefined);
+  const [pyConnected, setPyConnected]   = useState(false);
 
+  const currentVehicleIdRef = useRef<string | undefined>(undefined);
+  const wsRef               = useRef<WebSocket | null>(null);
+
+  // ── Connexion au serveur Python local ────────────────────────────────────
+  useEffect(() => {
+    function connect() {
+      const ws = new WebSocket(PYTHON_WS);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setPyConnected(true);
+        console.log("🔗 Connecté au serveur Python");
+      };
+
+      ws.onclose = () => {
+        setPyConnected(false);
+        setTimeout(connect, 2000);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data as string);
+          if (data.state) {
+            setVehicleState(data.state as VehicleState);
+            setMsgCount((c) => c + 1);
+          }
+        } catch { /* ignore */ }
+      };
+    }
+    connect();
+    return () => {
+      wsRef.current?.close();
+    };
+  }, []);
+
+  // ── Foxglove : réception des frames caméra ───────────────────────────────
   useLayoutEffect(() => {
     context.onRender = (renderState: any, done: () => void) => {
 
-      // ── 1. Lecture du véhicule actif depuis le panel Flotte ──
+      // Lecture vehicleId depuis le panel Flotte
       const newVehicleId = renderState.variables?.get("selected_vehicle") as string | undefined;
-
       if (newVehicleId !== currentVehicleIdRef.current) {
         currentVehicleIdRef.current = newVehicleId;
         setVehicleId(newVehicleId);
-
-        // Reset de l'état quand on change de véhicule
         setVehicleState("ATTENTE");
         setMsgCount(0);
-
-        // Re-souscription au bon topic
-        if (newVehicleId) {
-          context.subscribe([{ topic: `/vehicle/${newVehicleId}/status_processed` }]);
-        } else {
-          context.subscribe([]); // aucun véhicule sélectionné
-        }
+        context.subscribe(newVehicleId ? [{ topic: CAMERA_TOPIC }] : []);
       }
 
-      // ── 2. Lecture des messages du topic ──
+      // Envoi de la frame au serveur Python
       const frame = renderState.currentFrame as readonly MessageEvent<unknown>[] | undefined;
-      if (frame && frame.length > 0) {
+      if (frame && frame.length > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
         const lastEvent = frame[frame.length - 1];
         if (lastEvent) {
-          const raw = lastEvent.message as { data: string };
-          const data = JSON.parse(raw.data) as StatusData;
-          if (data?.state) {
-            setVehicleState(data.state as VehicleState);
-            setMsgCount((c) => c + 1);
+          const msg = lastEvent.message as any;
+          // Convertit data en base64 si c'est un Uint8Array
+          if (msg?.data instanceof Uint8Array) {
+            let binary = "";
+            const bytes = new Uint8Array(msg.data as ArrayBuffer);
+            for (let i = 0; i < bytes.length; i++) {
+              binary += String.fromCharCode(bytes[i]!);
+            }
+            wsRef.current.send(JSON.stringify({ ...msg, data: btoa(binary) }));
+          } else {
+            wsRef.current.send(JSON.stringify(msg));
           }
         }
       }
@@ -62,7 +95,6 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
 
     context.watch("currentFrame");
     context.watch("variables");
-
   }, [context]);
 
   const meta = STATE_META[vehicleState] ?? STATE_META.ATTENTE;
@@ -73,14 +105,12 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
       display: "flex", flexDirection: "column", alignItems: "center",
       justifyContent: "center", fontFamily: "sans-serif", gap: "15px"
     }}>
-      {/* Badge véhicule actif */}
       {vehicleId && (
         <div style={{ fontSize: "12px", color: "#6b7280", letterSpacing: "1px" }}>
           🚗 Véhicule : <span style={{ color: "#fff" }}>{vehicleId}</span>
         </div>
       )}
 
-      {/* État principal */}
       <div style={{
         fontSize: "40px", color: meta.color,
         border: `3px solid ${meta.color}`, borderRadius: "15px",
@@ -94,8 +124,8 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
       </div>
 
       <div style={{ opacity: 0.4, fontSize: "11px", textAlign: "center" }}>
-        Topic : {vehicleId ? `/vehicle/${vehicleId}/status_processed` : "—"}<br />
-        Messages reçus : {msgCount}
+        Python : {pyConnected ? "🟢 connecté" : "🔴 en attente"}<br />
+        Détections : {msgCount}
       </div>
     </div>
   );
