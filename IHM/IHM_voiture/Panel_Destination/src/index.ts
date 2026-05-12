@@ -1,5 +1,12 @@
 import { ExtensionContext } from "@foxglove/extension";
 import DestinationPanel from "./DestinationPanel";
+import { initVehiclePanel } from "./VehiclePanel";
+
+// Dans activate() :
+extensionContext.registerPanel({
+  name: "Carte",
+  initPanel: initVehiclePanel,
+});
 
 export function activate(extensionContext: ExtensionContext): void {
   extensionContext.registerPanel({
