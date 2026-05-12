@@ -12,19 +12,20 @@ const STATE_META: Record<VehicleState, { label: string; color: string; icon: str
   ATTENTE:  { label: "ATTENTE…",     color: "#6b7280", icon: "?" },
 };
 
-const PYTHON_WS = "ws://localhost:8767";
-const CAMERA_TOPIC = "/image_pour_le_s8";
+// ── WebSocket vers le bridge Python ROS 2 ────────────────────────────────────
+// Le bridge écoute /detection_statut (ROS) et pousse { state, vehicle_id, nb_detections }
+const PYTHON_WS = "ws://localhost:8765";
 
 function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
-  const [vehicleState, setVehicleState] = useState<VehicleState>("ATTENTE");
-  const [msgCount, setMsgCount]         = useState(0);
-  const [vehicleId, setVehicleId]       = useState<string | undefined>(undefined);
-  const [pyConnected, setPyConnected]   = useState(false);
+  const [vehicleState,  setVehicleState]  = useState<VehicleState>("ATTENTE");
+  const [nbDetections,  setNbDetections]  = useState(0);
+  const [vehicleId,     setVehicleId]     = useState<string | undefined>(undefined);
+  const [pyConnected,   setPyConnected]   = useState(false);
 
   const currentVehicleIdRef = useRef<string | undefined>(undefined);
   const wsRef               = useRef<WebSocket | null>(null);
 
-  // ── Connexion au serveur Python local ────────────────────────────────────
+  // ── Connexion WebSocket au bridge Python ─────────────────────────────────
   useEffect(() => {
     function connect() {
       const ws = new WebSocket(PYTHON_WS);
@@ -32,7 +33,7 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
 
       ws.onopen = () => {
         setPyConnected(true);
-        console.log("🔗 Connecté au serveur Python");
+        console.log("🔗 Connecté au bridge Python ROS 2");
       };
 
       ws.onclose = () => {
@@ -40,12 +41,23 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
         setTimeout(connect, 2000);
       };
 
+      ws.onerror = () => {
+        ws.close();
+      };
+
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data as string);
+          // Le bridge envoie : { state, vehicle_id, nb_detections }
           if (data.state) {
             setVehicleState(data.state as VehicleState);
-            setMsgCount((c) => c + 1);
+          }
+          if (typeof data.nb_detections === "number") {
+            setNbDetections(data.nb_detections);
+          }
+          // vehicle_id optionnel : override si le bridge le précise
+          if (data.vehicle_id) {
+            setVehicleId(data.vehicle_id);
           }
         } catch { /* ignore */ }
       };
@@ -56,44 +68,21 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
     };
   }, []);
 
-  // ── Foxglove : réception des frames caméra ───────────────────────────────
+  // ── Foxglove : lecture des variables (selected_vehicle) ──────────────────
+  // On conserve la souscription caméra au cas où un autre panel en aurait besoin,
+  // mais le traitement image est désormais fait côté ROS (SquareDetector).
   useLayoutEffect(() => {
     context.onRender = (renderState: any, done: () => void) => {
-
-      // Lecture vehicleId depuis le panel Flotte
       const newVehicleId = renderState.variables?.get("selected_vehicle") as string | undefined;
       if (newVehicleId !== currentVehicleIdRef.current) {
         currentVehicleIdRef.current = newVehicleId;
         setVehicleId(newVehicleId);
         setVehicleState("ATTENTE");
-        setMsgCount(0);
-        context.subscribe(newVehicleId ? [{ topic: CAMERA_TOPIC }] : []);
+        setNbDetections(0);
       }
-
-      // Envoi de la frame au serveur Python
-      const frame = renderState.currentFrame as readonly MessageEvent<unknown>[] | undefined;
-      if (frame && frame.length > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
-        const lastEvent = frame[frame.length - 1];
-        if (lastEvent) {
-          const msg = lastEvent.message as any;
-          // Convertit data en base64 si c'est un Uint8Array
-          if (msg?.data instanceof Uint8Array) {
-            let binary = "";
-            const bytes = new Uint8Array(msg.data as ArrayBuffer);
-            for (let i = 0; i < bytes.length; i++) {
-              binary += String.fromCharCode(bytes[i]!);
-            }
-            wsRef.current.send(JSON.stringify({ ...msg, data: btoa(binary) }));
-          } else {
-            wsRef.current.send(JSON.stringify(msg));
-          }
-        }
-      }
-
       done();
     };
 
-    context.watch("currentFrame");
     context.watch("variables");
   }, [context]);
 
@@ -101,9 +90,15 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
 
   return (
     <div style={{
-      background: "#0d0f14", height: "100%", color: "white",
-      display: "flex", flexDirection: "column", alignItems: "center",
-      justifyContent: "center", fontFamily: "sans-serif", gap: "15px"
+      background: "#0d0f14",
+      height: "100%",
+      color: "white",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      fontFamily: "sans-serif",
+      gap: "15px",
     }}>
       {vehicleId && (
         <div style={{ fontSize: "12px", color: "#6b7280", letterSpacing: "1px" }}>
@@ -112,10 +107,14 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
       )}
 
       <div style={{
-        fontSize: "40px", color: meta.color,
-        border: `3px solid ${meta.color}`, borderRadius: "15px",
-        padding: "20px 40px", textAlign: "center",
-        backgroundColor: `${meta.color}10`, transition: "all 0.3s ease"
+        fontSize: "40px",
+        color: meta.color,
+        border: `3px solid ${meta.color}`,
+        borderRadius: "15px",
+        padding: "20px 40px",
+        textAlign: "center",
+        backgroundColor: `${meta.color}10`,
+        transition: "all 0.3s ease",
       }}>
         <div style={{ fontSize: "60px" }}>{meta.icon}</div>
         <div style={{ fontWeight: "bold", marginTop: "10px", letterSpacing: "1px" }}>
@@ -125,7 +124,7 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
 
       <div style={{ opacity: 0.4, fontSize: "11px", textAlign: "center" }}>
         Python : {pyConnected ? "🟢 connecté" : "🔴 en attente"}<br />
-        Détections : {msgCount}
+        Détections : {nbDetections}
       </div>
     </div>
   );
@@ -133,7 +132,7 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
 
 export function initVehicleStatusPanel(context: PanelExtensionContext): () => void {
   const container = document.createElement("div");
-  container.style.width = "100%";
+  container.style.width  = "100%";
   container.style.height = "100%";
   context.panelElement.appendChild(container);
   const root = createRoot(container);
