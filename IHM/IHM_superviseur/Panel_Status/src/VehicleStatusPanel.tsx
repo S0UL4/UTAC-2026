@@ -1,5 +1,5 @@
-import { PanelExtensionContext } from "@foxglove/extension";
-import { useLayoutEffect, useEffect, useState, useRef } from "react";
+import { PanelExtensionContext, MessageEvent } from "@foxglove/extension";
+import { useLayoutEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
 type VehicleState = "MOVING" | "FREE" | "OCCUPIED" | "UNKNOWN" | "ATTENTE";
@@ -12,76 +12,71 @@ const STATE_META: Record<VehicleState, { label: string; color: string; icon: str
   ATTENTE:  { label: "ATTENTE…",     color: "#6b7280", icon: "?" },
 };
 
-// ── WebSocket vers le bridge Python ROS 2 ────────────────────────────────────
-// Le bridge écoute /detection_statut (ROS) et pousse { state, vehicle_id, nb_detections }
-const PYTHON_WS = "ws://172.20.67.174:8766";
+const STATUT_TOPIC = "/statut_voiture";
 
 function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
-  const [vehicleState,  setVehicleState]  = useState<VehicleState>("ATTENTE");
-  const [nbDetections,  setNbDetections]  = useState(0);
-  const [vehicleId,     setVehicleId]     = useState<string | undefined>(undefined);
-  const [pyConnected,   setPyConnected]   = useState(false);
+  const [vehicleState, setVehicleState] = useState<VehicleState>("ATTENTE");
+  const [nbDetections, setNbDetections] = useState(0);
+  const [vehicleId,    setVehicleId]    = useState<string | undefined>(undefined);
+  const [msgReceived,  setMsgReceived]  = useState(false);
 
   const currentVehicleIdRef = useRef<string | undefined>(undefined);
-  const wsRef               = useRef<WebSocket | null>(null);
 
-  // ── Connexion WebSocket au bridge Python ─────────────────────────────────
-  useEffect(() => {
-    function connect() {
-      const ws = new WebSocket(PYTHON_WS);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setPyConnected(true);
-        console.log("🔗 Connecté au bridge Python ROS 2");
-      };
-
-      ws.onclose = () => {
-        setPyConnected(false);
-        setTimeout(connect, 2000);
-      };
-
-      ws.onerror = () => {
-        ws.close();
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data as string);
-          // Le bridge envoie : { state, vehicle_id, nb_detections }
-          if (data.state) {
-            setVehicleState(data.state as VehicleState);
-          }
-          if (typeof data.nb_detections === "number") {
-            setNbDetections(data.nb_detections);
-          }
-          // vehicle_id optionnel : override si le bridge le précise
-          if (data.vehicle_id) {
-            setVehicleId(data.vehicle_id);
-          }
-        } catch { /* ignore */ }
-      };
-    }
-    connect();
-    return () => {
-      wsRef.current?.close();
-    };
-  }, []);
-
-  // ── Foxglove : lecture des variables (selected_vehicle) ──────────────────
   useLayoutEffect(() => {
+    context.subscribe([{ topic: STATUT_TOPIC }]);
+
     context.onRender = (renderState: any, done: () => void) => {
-      const newVehicleId = renderState.variables?.get("selected_vehicle") as string | undefined;
+      // 1) Véhicule sélectionné via sharedPanelState
+      const shared = renderState.sharedPanelState as { vehicleId?: string } | undefined;
+      const newVehicleId = shared?.vehicleId;
       if (newVehicleId !== currentVehicleIdRef.current) {
         currentVehicleIdRef.current = newVehicleId;
         setVehicleId(newVehicleId);
         setVehicleState("ATTENTE");
         setNbDetections(0);
       }
+
+      // 2) Messages reçus sur /statut_voiture
+      const frames = renderState.currentFrame as MessageEvent[] | undefined;
+      if (frames && frames.length > 0) {
+        const lastMsg = frames[frames.length - 1];
+        const raw: any = lastMsg?.message;
+
+        // Gestion du booléen direct
+        if (typeof raw?.data === "boolean") {
+          setVehicleState(raw.data ? "OCCUPIED" : "FREE");
+          setMsgReceived(true);
+          done();
+          return;
+        }
+
+        // Gestion du message custom ou JSON
+        let payload: any = raw;
+        if (typeof raw?.data === "string") {
+          try {
+            payload = JSON.parse(raw.data);
+          } catch {
+            payload = { state: raw.data };
+          }
+        }
+
+        if (payload?.state) {
+          setVehicleState(payload.state as VehicleState);
+        }
+        if (typeof payload?.nb_detections === "number") {
+          setNbDetections(payload.nb_detections);
+        }
+        if (payload?.vehicle_id) {
+          setVehicleId(payload.vehicle_id as string);
+        }
+        setMsgReceived(true);
+      }
+
       done();
     };
 
-    context.watch("variables");
+    context.watch("sharedPanelState");
+    context.watch("currentFrame");
   }, [context]);
 
   const meta = STATE_META[vehicleState] ?? STATE_META.ATTENTE;
@@ -116,12 +111,12 @@ function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
       }}>
         <div style={{ fontSize: "60px" }}>{meta.icon}</div>
         <div style={{ fontWeight: "bold", marginTop: "10px", letterSpacing: "1px" }}>
-          {vehicleId ? meta.label : "Sélectionnez un véhicule"}
+          {meta.label}
         </div>
       </div>
 
       <div style={{ opacity: 0.4, fontSize: "11px", textAlign: "center" }}>
-        Python : {pyConnected ? "🟢 connecté" : "🔴 en attente"}<br />
+        Topic : <code>{STATUT_TOPIC}</code> {msgReceived ? "🟢" : "🔴"}<br />
         Détections : {nbDetections}
       </div>
     </div>
