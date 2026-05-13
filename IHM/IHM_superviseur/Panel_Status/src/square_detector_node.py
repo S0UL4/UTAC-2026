@@ -1,176 +1,80 @@
-"""
-vehicle_status_ws_bridge.py
-────────────────────────────────────────────────────────────────────────────────
-Nœud ROS 2 hybride :
-  • S'abonne à /detection_statut  (std_msgs/String  →  "libre" | "occupé")
-    publié par le nœud SquareDetector
-  • Expose un serveur WebSocket sur ws://localhost:8765
-  • Envoie { state, vehicle_id, nb_detections } au panel TypeScript
-
-Architecture :
-  SquareDetector  ──/detection_statut──▶  VehicleStatusBridge  ──WS──▶  Foxglove Panel
-
-Dépendances : rclpy, std_msgs, websockets  (pip install websockets)
-────────────────────────────────────────────────────────────────────────────────
-"""
-
-import asyncio
-import json
-import threading
-
 import rclpy
 from rclpy.node import Node
+from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import String
+from cv_bridge import CvBridge
+import cv2
 
-import websockets
-from websockets.server import WebSocketServerProtocol
+# ── Paramètres ───────────────────────────────────────────────────────────────
+CAMERA_TOPIC    = "/image_pour_le_s8/compressed"
+STATUT_TOPIC    = "/detection_statut"
+CANNY_LOW       = 50
+CANNY_HIGH      = 150
+APPROX_EPSILON  = 0.04    
+MIN_AREA        = 500     
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-
-VEHICLE_ID          = "Alpha"
-DETECTION_TOPIC     = "/detection_statut"
-WS_HOST             = "0.0.0.0"
-WS_PORT             = 8766
-CONFIRMATION_FRAMES = 5          # nb de frames consécutives pour valider un changement
-
-# Mapping ROS (français) → TypeScript VehicleState
-ROS_TO_TS: dict[str, str] = {
-    "libre":  "FREE",
-    "occupé": "OCCUPIED",
-    "occupe": "OCCUPIED",   # tolérance sans accent
-}
-
-# ── Nœud ROS 2 + serveur WebSocket ────────────────────────────────────────────
-
-class VehicleStatusBridge(Node):
+class SquareDetector(Node):
 
     def __init__(self) -> None:
-        super().__init__("vehicle_status_ws_bridge")
+        super().__init__("det_stat") # Nom du nœud cohérent avec tes logs
 
-        self._lock               = threading.Lock()
-        self._statut_actuel      = "FREE"
-        self._statut_candidat    = "FREE"
-        self._frames_conf        = 0
-        self._nb_detections      = 0
+        self.bridge = CvBridge()
 
-        self._clients: set[WebSocketServerProtocol] = set()
-        self._loop: asyncio.AbstractEventLoop | None = None
-
+        # Correction : on pointe vers le bon nom de fonction
         self.subscription = self.create_subscription(
-            String,
-            DETECTION_TOPIC,
-            self._detection_callback,
+            CompressedImage,
+            CAMERA_TOPIC,
+            self.listener_callback, 
             10,
         )
+
+        self.publisher_ = self.create_publisher(String, STATUT_TOPIC, 10)
+
         self.get_logger().info(
-            f"📡 Abonné à {DETECTION_TOPIC}  —  WebSocket ws://{WS_HOST}:{WS_PORT}"
+            f"✅ SquareDetector démarré\n"
+            f"   📥 Abonné  à : {CAMERA_TOPIC}\n"
+            f"   📤 Publie  sur : {STATUT_TOPIC}"
         )
 
-    # ── Callback ROS : appelé à chaque message /detection_statut ─────────────
-
-    def _detection_callback(self, msg: String) -> None:
-        raw            = msg.data.strip().lower()
-        nouveau_candid = ROS_TO_TS.get(raw, "UNKNOWN")
-
-        with self._lock:
-            # Logique de confirmation pour éviter les faux positifs
-            if nouveau_candid == self._statut_candidat:
-                self._frames_conf += 1
-            else:
-                self._statut_candidat = nouveau_candid
-                self._frames_conf     = 1
-
-            changed = False
-            if (
-                self._frames_conf >= CONFIRMATION_FRAMES
-                and self._statut_candidat != self._statut_actuel
-            ):
-                self._statut_actuel = self._statut_candidat
-                changed             = True
-
-            if nouveau_candid == "OCCUPIED":
-                self._nb_detections += 1
-
-            payload = {
-                "state":         self._statut_actuel,
-                "vehicle_id":    VEHICLE_ID,
-                "nb_detections": self._nb_detections,
-            }
-
-        if changed:
-            emoji = "🔴" if self._statut_actuel == "OCCUPIED" else "🟢"
-            self.get_logger().info(
-                f"{emoji}  {VEHICLE_ID} → {self._statut_actuel}"
-                f"  (détections : {self._nb_detections})"
-            )
-
-        # Broadcast non-bloquant vers les clients WebSocket
-        if self._loop is not None:
-            asyncio.run_coroutine_threadsafe(
-                self._broadcast(json.dumps(payload)),
-                self._loop,
-            )
-
-    # ── WebSocket : broadcast vers tous les panels connectés ─────────────────
-
-    async def _broadcast(self, message: str) -> None:
-        dead: set[WebSocketServerProtocol] = set()
-        for ws in list(self._clients):
-            try:
-                await ws.send(message)
-            except websockets.exceptions.ConnectionClosed:
-                dead.add(ws)
-        self._clients -= dead
-
-    async def _ws_handler(self, websocket: WebSocketServerProtocol) -> None:
-        self._clients.add(websocket)
-        self.get_logger().info("🔗 Panel Foxglove connecté")
-
-        # Envoie l'état courant dès la connexion
-        with self._lock:
-            snapshot = json.dumps({
-                "state":         self._statut_actuel,
-                "vehicle_id":    VEHICLE_ID,
-                "nb_detections": self._nb_detections,
-            })
-        await websocket.send(snapshot)
-
+    def listener_callback(self, msg_image): # On renomme l'entrée pour éviter les conflits
         try:
-            await websocket.wait_closed()
-        finally:
-            self._clients.discard(websocket)
-            self.get_logger().info("🔌 Panel Foxglove déconnecté")
+            # On convertit l'image reçue
+            cv_image = self.bridge.compressed_imgmsg_to_cv2(msg_image, desired_encoding='bgr8')
+        except Exception as e:
+            self.get_logger().warn(f"cv_bridge erreur : {e}")
+            return
 
-    # ── Thread WebSocket ──────────────────────────────────────────────────────
+        # 2. Pipeline OpenCV
+        gray    = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edged   = cv2.Canny(blurred, CANNY_LOW, CANNY_HIGH)
 
-    def start_ws_server(self) -> None:
-        """Lance la boucle asyncio + serveur WS dans un thread dédié."""
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._serve())
+        contours, _ = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    async def _serve(self) -> None:
-        self.get_logger().info(
-            f"🟢 Serveur WebSocket prêt sur ws://{WS_HOST}:{WS_PORT}"
-        )
-        async with websockets.serve(
-            self._ws_handler,
-            WS_HOST,
-            WS_PORT,
-            max_size=10 * 1024 * 1024,
-        ):
-            await asyncio.Future()   # tourne indéfiniment
+        detected = False
+        for cnt in contours:
+            if cv2.contourArea(cnt) < MIN_AREA:
+                continue
 
+            peri = cv2.arcLength(cnt, True)
+            approx = cv2.approxPolyDP(cnt, APPROX_EPSILON * peri, True)
 
-# ── Point d'entrée ────────────────────────────────────────────────────────────
+            if len(approx) == 4: # Un quadrilatère !
+                detected = True
+                break
+
+        # 3. Publication du résultat
+        res_msg = String() # On utilise un nom différent de 'msg'
+        res_msg.data = "occupé" if detected else "libre"
+        self.publisher_.publish(res_msg)
+
+        # Log de debug (affichera le statut dans la console)
+        self.get_logger().info(f"Statut : {res_msg.data}", once=False)
+
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = VehicleStatusBridge()
-
-    ws_thread = threading.Thread(target=node.start_ws_server, daemon=True)
-    ws_thread.start()
-
+    node = SquareDetector()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
@@ -178,7 +82,6 @@ def main(args=None) -> None:
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == "__main__":
     main()
