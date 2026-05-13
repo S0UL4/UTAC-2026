@@ -29,8 +29,8 @@ from websockets.server import WebSocketServerProtocol
 
 VEHICLE_ID          = "Alpha"
 DETECTION_TOPIC     = "/detection_statut"
-WS_HOST             = "localhost"
-WS_PORT             = 8765
+WS_HOST             = "0.0.0.0"
+WS_PORT             = 8766
 CONFIRMATION_FRAMES = 5          # nb de frames consécutives pour valider un changement
 
 # Mapping ROS (français) → TypeScript VehicleState

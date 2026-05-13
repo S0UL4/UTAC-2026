@@ -14,7 +14,7 @@ const STATE_META: Record<VehicleState, { label: string; color: string; icon: str
 
 // ── WebSocket vers le bridge Python ROS 2 ────────────────────────────────────
 // Le bridge écoute /detection_statut (ROS) et pousse { state, vehicle_id, nb_detections }
-const PYTHON_WS = "ws://localhost:8765";
+const PYTHON_WS = "ws://172.20.67.174:8766";
 
 function VehicleStatusPanel({ context }: { context: PanelExtensionContext }) {
   const [vehicleState,  setVehicleState]  = useState<VehicleState>("ATTENTE");
