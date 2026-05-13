@@ -1,0 +1,14 @@
+{
+  "name": "ihm-voiture-utac",
+  "version": "0.0.1",
+  "description": "Panneaux personnalisés UTAC",
+  "main": "src/index.ts",
+  "scripts": {
+    "local-install": "foxglove-extension local-install",
+    "build": "foxglove-extension build",
+    "package": "foxglove-extension package"
+  },
+  "devDependencies": {
+    "@foxglove/extension": "^2.52.0"
+  }
+}
