@@ -13,7 +13,7 @@ type CommandMessage = {
 
 type VehicleMode = "RUNNING" | "PAUSED" | "STOPPED" | "RETURNING";
 
-const BRAKE_TOPIC = "/test_control_frein";
+const BRAKE_TOPIC = "/brake_req/superviseur";   // 👈 MODIF : topic dédié (avant : /test_control_frein)
 
 // ── Styles partagés ────────────────────────────────────────────────────────
 const BASE_BTN: CSSProperties = {
@@ -32,6 +32,7 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
 
   const currentVehicleRef = useRef<string | undefined>(undefined);
   const advertised        = useRef(false);
+  const brakeValueRef     = useRef(0);          // 👈 MODIF : valeur frein courante pour le heartbeat
 
   useLayoutEffect(() => {
     // Advertise le topic frein une seule fois avec le schéma complet
@@ -46,6 +47,12 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
       advertised.current = true;
     }
 
+    // 👈 MODIF : heartbeat — republie l'état du frein à 10 Hz
+    // sans ça, l'arbitre voit la commande expirer (timeout) et le frein se relâche seul
+    const heartbeat = setInterval(() => {
+      context.publish?.(BRAKE_TOPIC, { data: brakeValueRef.current });
+    }, 100);
+
     context.onRender = (renderState: any, done: () => void) => {
       const shared = renderState.sharedPanelState as { vehicleId?: string } | undefined;
       const newId  = shared?.vehicleId;
@@ -58,6 +65,7 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
         setLastCmd(undefined);
         setConfirm(false);
         setBrakeActive(false);
+        brakeValueRef.current = 0;            // 👈 MODIF : reset frein au changement de véhicule
 
         if (newId) {
           context.subscribe([{ topic: `/vehicle/${newId}/cmd_feedback` }]);
@@ -80,10 +88,13 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
 
     context.watch("currentFrame");
     context.watch("sharedPanelState");
+
+    return () => clearInterval(heartbeat);    // 👈 MODIF : arrêt du heartbeat à la fermeture
   }, [context]);
 
   // ── Publication frein ─────────────────────────────────────────────────────
   function publishBrake(value: number): void {
+    brakeValueRef.current = value;            // 👈 MODIF : le heartbeat republiera cette valeur
     context.publish?.(BRAKE_TOPIC, { data: value });
     setBrakeActive(value === 100);
 
@@ -120,7 +131,7 @@ function StopPanel({ context }: { context: PanelExtensionContext }) {
 
     if (command === "EMERGENCY_STOP") {
       setMode("STOPPED");
-      publishBrake(100); // 👈 frein 100% automatique
+      publishBrake(100); // frein 100% automatique
     }
     if (command === "PAUSE")          setMode("PAUSED");
     if (command === "RESUME")         { setMode("RUNNING"); publishBrake(0); }

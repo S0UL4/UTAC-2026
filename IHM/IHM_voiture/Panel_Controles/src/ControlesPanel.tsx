@@ -2,7 +2,7 @@ import { PanelExtensionContext } from "@foxglove/extension";
 import { useLayoutEffect, useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
-const TOPIC_FREIN     = "/test_control_frein";
+const TOPIC_FREIN     = "/brake_req/vehicule";   // topic dédié (avant : /test_control_frein)
 const TOPIC_ARRET     = "/arret_urgence";
 const TOPIC_STRATEGIE = "/obstacle_strategy";
 
@@ -11,14 +11,14 @@ type Mode = "autonome" | "prudent" | "urgence";
 function ControlesPanel({ context }: { context: PanelExtensionContext }): JSX.Element {
   const [mode, setMode]             = useState<Mode>("autonome");
   const [lastAction, setLastAction] = useState<string>("");
-  
+
   // Permet de s'assurer qu'on n'advertise qu'une seule fois
   const advertised = useRef(false);
 
   useLayoutEffect(() => {
     context.onRender = (_state: any, done: () => void) => { done(); };
     context.watch("currentFrame");
-    
+
     // On reprend EXACTEMENT la logique de votre StopPanel qui fonctionne
     if (!advertised.current) {
       const datatypes = new Map([
@@ -29,7 +29,7 @@ function ControlesPanel({ context }: { context: PanelExtensionContext }): JSX.El
       context.advertise?.(TOPIC_FREIN,     "std_msgs/msg/Int32",  { datatypes });
       context.advertise?.(TOPIC_ARRET,     "std_msgs/msg/String", { datatypes });
       context.advertise?.(TOPIC_STRATEGIE, "std_msgs/msg/String", { datatypes });
-      
+
       advertised.current = true;
     }
   }, [context]);
@@ -71,10 +71,11 @@ function ControlesPanel({ context }: { context: PanelExtensionContext }): JSX.El
     log("🚗 MODE AUTONOME — frein 0%");
   };
 
-  // ── Envoi continu pour la sécurité (Deadman) ──
-  // Le deadman a besoin d'entendre la consigne régulièrement, sinon il bloque tout.
+  // ── Envoi continu pour l'arbitre (heartbeat) ──
+  // L'arbitre a un timeout de 0,5 s : il faut republier la consigne plus vite que ça,
+  // sinon la commande expire et l'arbitre passe à une autre source / au repli sûr.
   useEffect(() => {
-    // Répète la dernière consigne 2 fois par seconde (toutes les 500ms)
+    // Répète la dernière consigne 10 fois par seconde (toutes les 100ms)
     const interval = setInterval(() => {
       if (mode === "urgence") {
         pubFrein(100);
@@ -83,7 +84,7 @@ function ControlesPanel({ context }: { context: PanelExtensionContext }): JSX.El
       } else if (mode === "autonome") {
         pubFrein(0);
       }
-    }, 500);
+    }, 100);
 
     return () => clearInterval(interval);
   }, [mode, context]); // Se met à jour si le mode change
