@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>dms_pilote</name>
+  <version>1.0.0</version>
+  <description>Système DMS hybride : C++ (Dlib) et Python (MediaPipe)</description>
+  <maintainer email="user@UTAC.com">user</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>libopencv-dev</depend>
+  <depend>ami_interfaces</depend>
+
+  <depend>rclpy</depend>
+
+  <exec_depend>libdlib-dev</exec_depend>
+  <exec_depend>python3-mediapipe</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

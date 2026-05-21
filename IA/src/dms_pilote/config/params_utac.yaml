@@ -1,0 +1,11 @@
+mediapipe_node:
+  ros__parameters:
+    yaw_threshold: 45.0          # degrés gauche/droite (était 30, élargi)
+    pitch_down_threshold: -35.0  # tête baissée (était -20, élargi)
+    pitch_up_threshold: 35.0     # tête relevée (était 25, élargi)
+    camera_yaw_offset: -5.0      # compense l'angle horizontal caméra rétro
+    camera_pitch_offset: -12.0   # compense l'angle vertical caméra rétro
+    ear_threshold: 0.30          # yeux fermés (légèrement abaissé)
+    gaze_threshold: 0.25         # regard dévié (légèrement abaissé)
+    alert_frames: 15             # frames avant alerte (plus tolérant)
+    shape_model_path: "/opt/ros/jazzy/share/dms_pilote/config/lbfmodel.yaml"
