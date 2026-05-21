@@ -39,23 +39,23 @@ Clonez le dépôt gihtub sur https://github.com/S0UL4/UTAC-2026 et naviguez dans
 
 ### 2. Lancement de la voiture
 
-source install/setup.bash
+source install/setup.bash \n
 ros2 launch ami ami.launch.xml
 
 ### 3. Lancement du foxglove bridge
-source install/setup.bash
+source install/setup.bash \n
 ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 
 ### 4. Lancement du noeud camera_publisher
-cd /home/user/Desktop/s8_ws/src/my_package
-colcon build --symlink-install
-source install/setup.bash
+cd /home/user/Desktop/s8_ws/src/my_package \n
+colcon build --symlink-install \n
+source install/setup.bash \n
 ros2 run my_package camera_publisher
 
 ### 5. Lancement du noeud Arbitre_frein
-cd /home/user/Desktop/s8_ws/src/my_package
-source install/setup.bash
-ros2 run my_package Arbitre_frein
+cd /home/user/Desktop/s8_ws/src/my_package \n
+source install/setup.bash \n
+ros2 run my_package Arbitre_frein \n
 
 
 
