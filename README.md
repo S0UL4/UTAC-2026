@@ -67,10 +67,12 @@ source install/setup.bash
 
 ros2 run my_package Arbitre_frein
 
+
 ## 🖼️ Visualisation des IHM
 
 <img width="2497" height="1327" alt="Screenshot from 2026-05-26 14-39-16" src="https://github.com/user-attachments/assets/aa6c5e88-7dfa-46ce-b8e7-54d2ca19ea5e" />
 <img width="2497" height="1327" alt="Screenshot from 2026-05-26 14-37-56" src="https://github.com/user-attachments/assets/871b2b34-b801-4e6e-87ff-fa040d3db96b" />
+
 
 ## 😪 Visualisation de la detection d'attention
 
@@ -78,6 +80,8 @@ ros2 run my_package Arbitre_frein
 <img width="1182" height="876" alt="e59a2092-1598-4b44-871f-c45e37484b76" src="https://github.com/user-attachments/assets/339ffedc-a177-417d-b140-209f4a8df9cd" />
 <img width="1182" height="876" alt="f746fc86-479f-4c7b-b7ec-ad69ccca1f8c" src="https://github.com/user-attachments/assets/db40c16c-afa0-4bb2-9d5a-bd6d917dbc62" />
 <img width="1182" height="876" alt="973f5401-eaad-426a-858b-137b0d61adb5" src="https://github.com/user-attachments/assets/8a8633c6-89a6-4881-b4a4-0e29b4ca8c94" />
+<img width="1182" height="876" alt="7e380d5c-d742-4688-b938-62f8f2630901 (1)" src="https://github.com/user-attachments/assets/84710e1b-e5d3-48d7-87ce-2ad1f22cb518" />
+
 
 
 
