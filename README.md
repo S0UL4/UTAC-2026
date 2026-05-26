@@ -70,5 +70,6 @@ ros2 run my_package Arbitre_frein
 ## 🖼️ Visualisation des IHM
 
 <img width="2497" height="1327" alt="Screenshot from 2026-05-26 14-39-16" src="https://github.com/user-attachments/assets/aa6c5e88-7dfa-46ce-b8e7-54d2ca19ea5e" />
-<img width="2497" height="1327" alt="Screenshot from 2026-05-26 14-39-16" src="https://github.com/user-attachments/assets/95eea4c9-c41b-4591-89ef-c7a60e800b96" />
+<img width="2497" height="1327" alt="Screenshot from 2026-05-26 14-37-56" src="https://github.com/user-attachments/assets/871b2b34-b801-4e6e-87ff-fa040d3db96b" />
+
 
