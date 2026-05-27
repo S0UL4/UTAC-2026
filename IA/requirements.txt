@@ -1,0 +1,17 @@
+# --- Coeur du projet (Vision & IA) ---
+numpy==2.4.4
+opencv-contrib-python==4.13.0.92
+mediapipe==0.10.13
+
+# --- Dépendances requises par MediaPipe & OpenCV ---
+protobuf==4.25.9
+attrs==26.1.0
+matplotlib==3.10.9
+pillow==12.2.0
+sounddevice==0.5.5
+absl-py==2.4.0
+
+# --- Stack Math & Deep Learning ---
+scipy==1.17.1
+jax==0.10.0
+jaxlib==0.10.0
