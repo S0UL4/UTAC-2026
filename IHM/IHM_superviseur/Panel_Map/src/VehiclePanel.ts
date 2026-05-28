@@ -343,16 +343,17 @@ map.addControl(
 
   async function geocodeAddresses(query: string): Promise<Array<{ lngLat: [number, number]; label: string }>> {
   const url =
-    `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=fr&q=${encodeURIComponent(query)}`;
+    `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&q=${encodeURIComponent(query)}`;
 
   const response = await fetch(url, {
     headers: {
       Accept: "application/json",
+      "User-Agent": "UTAC-2026/1.0"
     },
   });
 
   if (!response.ok) {
-    throw new Error("Échec du géocodage de l’adresse.");
+    throw new Error(`Échec du géocodage : HTTP ${response.status} ${response.statusText}`);
   }
 
   const data = (await response.json()) as NominatimResult[];
@@ -375,10 +376,15 @@ map.addControl(
   const url =
     `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`;
 
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "UTAC-2026/1.0"
+    }
+  });
 
   if (!response.ok) {
-    throw new Error("Échec du calcul d’itinéraire.");
+    throw new Error(`Échec du calcul d’itinéraire : HTTP ${response.status} ${response.statusText}`);
   }
 
   const data = (await response.json()) as OsrmRouteResponse;
